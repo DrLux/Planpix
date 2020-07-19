@@ -93,15 +93,15 @@ class Trainer():
             nn.utils.clip_grad_norm_(self.param_list, self.parms.grad_clip_norm, norm_type=2)
             self.optimiser.step()
             # Store (0) observation loss (1) reward loss (2) KL loss
-            self.metrics['observation_loss'].append(observation_loss.item() )
-            self.metrics['reward_loss'].append(reward_loss.item() ) 
-            self.metrics['kl_loss'].append(kl_loss.item() )
+            #self.metrics['observation_loss'].append(observation_loss.item() )
+            #self.metrics['reward_loss'].append(reward_loss.item() ) 
+            #self.metrics['kl_loss'].append(kl_loss.item() )
 
         #save statistics and plot them
-        #losses = tuple(zip(*losses))  #PROVA A RIFARLO SENZA LOSSES
-        #self.metrics['observation_loss'].append(losses[0])
-        #self.metrics['reward_loss'].append(losses[1])
-        #self.metrics['kl_loss'].append(losses[2])
+        losses = tuple(zip(*losses))  #PROVA A RIFARLO SENZA LOSSES
+        self.metrics['observation_loss'].append(losses[0])
+        self.metrics['reward_loss'].append(losses[1])
+        self.metrics['kl_loss'].append(losses[2])
         lineplot(self.metrics['episodes'][-len(self.metrics['observation_loss']):], self.metrics['observation_loss'], 'observation_loss', self.results_dir)
         lineplot(self.metrics['episodes'][-len(self.metrics['reward_loss']):], self.metrics['reward_loss'], 'reward_loss', self.results_dir)
         lineplot(self.metrics['episodes'][-len(self.metrics['kl_loss']):], self.metrics['kl_loss'], 'kl_loss', self.results_dir)
@@ -177,7 +177,6 @@ class Trainer():
         self.metrics['test_episodes'].append(episode)
         self.metrics['test_rewards'].append(total_rewards.tolist())
         lineplot(self.metrics['test_episodes'], self.metrics['test_rewards'], 'test_rewards', self.results_dir)
-        lineplot(np.asarray(self.metrics['steps'])[np.asarray(self.metrics['test_episodes']) - 1], self.metrics['test_rewards'], 'test_rewards_steps', self.results_dir, xaxis='step')
         
         write_video(video_frames, 'test_episode_%s' % str(episode), self.video_path)  # Lossy compression
         # Set models to train mode

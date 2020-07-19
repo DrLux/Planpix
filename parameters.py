@@ -7,7 +7,7 @@ class Parameters():
 
         ### ENV ####
         self.env_name = 'reacher-easy'
-        self.seed = 1
+        self.seed = 15
         self.max_episode_length = 1000
         self.bit_depth = 5
         
@@ -45,10 +45,10 @@ class Parameters():
         # Interactions with the environment
         self.free_nats = 3
         self.action_noise = 0.3
-        self.test_episodes = 1#3
+        self.test_episodes = 3
         self.flag_render = False
         self.max_episode_length = 1000
-        self.training_episodes = 500
+        self.training_episodes = 502
         self.collect_interval = 100 #numero di campioni che peschi dal buffer ad ogni iterazione 
         self.chunk_size = 50
         self.grad_clip_norm = 1000

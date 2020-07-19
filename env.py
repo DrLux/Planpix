@@ -1,26 +1,34 @@
+from torchvision.utils import save_image
+import os
+import torchvision.transforms.functional as TF
+
 from dm_control import suite
 from dm_control.suite.wrappers import pixels
 import cv2
 import numpy as np
 import torch
+import PIL.Image as PilImage
+
 
 CONTROL_SUITE_ENVS = ['cartpole-balance', 'cartpole-swingup', 'reacher-easy', 'finger-spin', 'cheetah-run', 'ball_in_cup-catch', 'walker-walk']
 CONTROL_SUITE_ACTION_REPEATS = {'cartpole': 8, 'reacher': 4, 'finger': 2, 'cheetah': 4, 'ball_in_cup': 6, 'walker': 2}
+
 
 # Preprocesses an observation inplace (from float32 Tensor [0, 255] to [-0.5, 0.5])
 def preprocess_observation_(observation, bit_depth):
     observation.div_(2 ** (8 - bit_depth)).floor_().div_(2 ** bit_depth).sub_(0.5)  # Quantise to given bit depth and centre
     observation.add_(torch.rand_like(observation).div_(2 ** bit_depth))  # Dequantise (to approx. match likelihood of PDF of continuous images vs. PMF of discrete images)
 
-
-def _images_to_observation(images, bit_depth):
-    images = torch.tensor(cv2.resize(images, (64, 64), interpolation=cv2.INTER_LINEAR).transpose(2, 0, 1), dtype=torch.float32)  # Resize and put channel first
-    preprocess_observation_(images, bit_depth)  # Quantise, centre and dequantise inplace
-    return images.unsqueeze(dim=0)  # Add batch dimension
-
 # Postprocess an observation for storage (from float32 numpy array [-0.5, 0.5] to uint8 numpy array [0, 255])
 def postprocess_observation(observation, bit_depth):
     return np.clip(np.floor((observation + 0.5) * 2 ** bit_depth) * 2 ** (8 - bit_depth), 0, 2 ** 8 - 1).astype(np.uint8)
+
+def _images_to_observation(images, bit_depth):
+    #images = TF.to_tensor(np.asarray(images.copy()))
+    images = torch.tensor(images.copy().transpose(2, 0, 1), dtype=torch.float32)  #put channel first and technical fix with .copy()
+    preprocess_observation_(images, bit_depth)  # Quantise, centre and dequantise inplace
+    return images.unsqueeze(dim=0)  # Add batch dimension
+
 
 class ControlSuiteEnv():
     def __init__(self, env_name, seed, max_episode_length, bit_depth):
@@ -35,7 +43,7 @@ class ControlSuiteEnv():
     def reset(self):
         self.t = 0  # Reset internal timer
         state = self._env.reset()
-        return _images_to_observation(self._env.physics.render(camera_id=0), self.bit_depth)
+        return _images_to_observation(self._env.physics.render(height=64, width=64, camera_id=0), self.bit_depth)
 
 
     def step(self, action):
@@ -47,7 +55,7 @@ class ControlSuiteEnv():
             self.t += 1 #increment internal timer
             done = state.last() or self.t == self.max_episode_length
             if done: break
-        observation = _images_to_observation(self._env.physics.render(camera_id=0), self.bit_depth)
+        observation = _images_to_observation(self._env.physics.render(height=64, width=64, camera_id=0), self.bit_depth)
         return observation, reward, done
 
     def render(self):

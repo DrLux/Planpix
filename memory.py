@@ -2,6 +2,9 @@ import numpy as np
 import torch
 from env import postprocess_observation, preprocess_observation_
 
+import torchvision.transforms.functional as TF
+
+
 class ExperienceReplay():
     def __init__(self, size, observation_size, action_size, bit_depth, device):
         self.device = device
