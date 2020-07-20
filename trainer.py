@@ -71,7 +71,7 @@ class Trainer():
         ######
 
         # Model fitting
-        #losses = []
+        losses = []
         tqdm.write("Fitting buffer")
         for s in tqdm(range(self.parms.collect_interval)):
 
@@ -85,7 +85,7 @@ class Trainer():
             # LOSS
             observation_loss = F.mse_loss(bottle(self.observation_model, (beliefs, posterior_states)), observations[1:], reduction='none').sum((2, 3, 4)).mean(dim=(0, 1))
             reward_loss = F.mse_loss(bottle(self.reward_model, (beliefs, posterior_states)), rewards[:-1], reduction='none').mean(dim=(0, 1))
-            kl_loss = torch.max(kl_divergence(Normal(posterior_means, posterior_std_devs), Normal(prior_means, prior_std_devs)).sum(dim=2), self.free_nats).mean(dim=(0, 1))  # Note that normalisation by overshooting distance and weighting by overshooting distance cancel out
+            kl_loss = torch.max(kl_divergence(Normal(posterior_means, posterior_std_devs), Normal(prior_means, prior_std_devs)).sum(dim=2), self.free_nats).mean(dim=(0, 1))  
 
             # Update model parameters
             self.optimiser.zero_grad()
@@ -93,15 +93,16 @@ class Trainer():
             nn.utils.clip_grad_norm_(self.param_list, self.parms.grad_clip_norm, norm_type=2)
             self.optimiser.step()
             # Store (0) observation loss (1) reward loss (2) KL loss
-            #self.metrics['observation_loss'].append(observation_loss.item() )
-            #self.metrics['reward_loss'].append(reward_loss.item() ) 
-            #self.metrics['kl_loss'].append(kl_loss.item() )
+            #losses.append([observation_loss.item(), reward_loss.item(), kl_loss.item()])
+            self.metrics['observation_loss'].append(observation_loss.item() )
+            self.metrics['reward_loss'].append(reward_loss.item() ) 
+            self.metrics['kl_loss'].append(kl_loss.item() )
 
         #save statistics and plot them
-        losses = tuple(zip(*losses))  #PROVA A RIFARLO SENZA LOSSES
-        self.metrics['observation_loss'].append(losses[0])
-        self.metrics['reward_loss'].append(losses[1])
-        self.metrics['kl_loss'].append(losses[2])
+        #losses = tuple(zip(*losses))  #PROVA A RIFARLO SENZA LOSSES
+        #self.metrics['observation_loss'].append(losses[0])
+        #self.metrics['reward_loss'].append(losses[1])
+        #self.metrics['kl_loss'].append(losses[2])
         lineplot(self.metrics['episodes'][-len(self.metrics['observation_loss']):], self.metrics['observation_loss'], 'observation_loss', self.results_dir)
         lineplot(self.metrics['episodes'][-len(self.metrics['reward_loss']):], self.metrics['reward_loss'], 'reward_loss', self.results_dir)
         lineplot(self.metrics['episodes'][-len(self.metrics['kl_loss']):], self.metrics['kl_loss'], 'kl_loss', self.results_dir)

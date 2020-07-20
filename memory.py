@@ -4,7 +4,6 @@ from env import postprocess_observation, preprocess_observation_
 
 import torchvision.transforms.functional as TF
 
-
 class ExperienceReplay():
     def __init__(self, size, observation_size, action_size, bit_depth, device):
         self.device = device
@@ -26,13 +25,13 @@ class ExperienceReplay():
         self.idx = (self.idx + 1) % self.size
         self.full = self.full or self.idx == 0 #flag
         self.steps, self.episodes = self.steps + 1, self.episodes + (1 if done else 0)
-
+    
     # Returns an index for a valid single sequence chunk uniformly sampled from the memory
     def _sample_idx(self, L):
         valid_idx = False
         while not valid_idx:
-            idx = np.random.randint(0, self.size if self.full else self.idx - L)
-            idxs = np.arange(idx, idx + L) % self.size
+            idx = np.random.randint(0, self.size if self.full else self.idx - L) #take a random point into the buffer
+            idxs = np.arange(idx, idx + L) % self.size # take L sequantial steps from the random point
             valid_idx = not self.idx in idxs[1:]  # Make sure data does not cross the memory index
         return idxs
 
@@ -43,6 +42,8 @@ class ExperienceReplay():
         return observations.reshape(L, n, *observations.shape[1:]), self.actions[vec_idxs].reshape(L, n, -1), self.rewards[vec_idxs].reshape(L, n), self.nonterminals[vec_idxs].reshape(L, n, 1)
 
     # Returns a batch of sequence chunks uniformly sampled from the memory
+    # n = batch size
+    # L = chunk length
     def sample(self, n, L):
         batch = self._retrieve_batch(np.asarray([self._sample_idx(L) for _ in range(n)]), n, L)
         return [torch.as_tensor(item).to(device=self.device) for item in batch]

@@ -2,7 +2,7 @@
 class Parameters():
     def __init__(self):
         # Parametri che cambio più frequentemente
-        self.gpu_id = 1
+        self.gpu_id = 0
 
 
         ### ENV ####
@@ -43,9 +43,9 @@ class Parameters():
         self.batch_size = 50
         
         # Interactions with the environment
-        self.free_nats = 3
+        self.free_nats = 1#3 # nella loss di KL invece di prendere il valore maggiore di distanza prende la media dei 3 valori 
         self.action_noise = 0.3
-        self.test_episodes = 3
+        self.test_episodes = 1#3
         self.flag_render = False
         self.max_episode_length = 1000
         self.training_episodes = 502
