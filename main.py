@@ -40,7 +40,8 @@ class Initializer():
       
       # Load checkpoints
       #self.trainer.load_checkpoints()
-      print("Total training episodes: ", self.parms.training_episodes, " Buffer sampling: ", self.parms.collect_interval)
+      #self.trainer.dump_plan()
+      #print("Total training episodes: ", self.parms.training_episodes, " Buffer sampling: ", self.parms.collect_interval)
       self.trainer.train_models()
       #self.trainer.test_model()
       self.env.close()

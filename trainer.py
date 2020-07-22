@@ -189,3 +189,41 @@ class Trainer():
         test_envs.close()
         return self.metrics
 
+    def dump_plan(self): 
+        # Set models to eval mode
+        self.transition_model.eval()
+        self.observation_model.eval()
+        self.reward_model.eval()
+        self.encoder.eval()
+
+        with torch.no_grad():
+            #save_image(torch.as_tensor(observation), os.path.join(self.results_dir, 'intial_obs.png'))
+            done = False
+            observation, video_frames = self.env.reset(),[]
+            belief, posterior_state, action = torch.zeros(1, self.parms.belief_size, device=self.parms.device), torch.zeros(1, self.parms.state_size, device=self.parms.device), torch.zeros(1, self.env.action_size, device=self.parms.device)
+            tqdm.write("Testing model.")
+
+            observation = observation.to(device=self.parms.device)
+            belief, _, _, _, posterior_state, _, _ = self.transition_model(posterior_state, action.unsqueeze(dim=0), belief, self.encoder(observation).unsqueeze(dim=0))  
+
+            belief, posterior_state = belief.squeeze(dim=0), posterior_state.squeeze(dim=0)  # Remove time dimension from belief/state
+            
+            next_action, beliefs, states, plan = self.planner(belief, posterior_state)  # Get action from planner(q(s_t|o≤t,a<t), p)      
+            
+            predicted_frames = self.observation_model(beliefs, states).cpu()
+
+            for i in range(self.parms.planning_horizon):
+                plan[i].clamp_(min=self.env.action_range[0], max=self.env.action_range[1])  # Clip action range
+                next_observation, reward, done = self.env.step(plan[i].cpu())  
+                next_observation = next_observation.squeeze(dim=0)
+                video_frames.append(make_grid(torch.cat([next_observation, predicted_frames[i]], dim=1) + 0.5, nrow=2).numpy())  # Decentre
+                #save_image(torch.as_tensor(next_observation), os.path.join(self.results_dir, 'original_obs%d.png' % i))
+                #save_image(torch.as_tensor(predicted_frames[i]), os.path.join(self.results_dir, 'prediction_obs%d.png' % i))
+
+
+            write_video(video_frames, 'dump_plan', self.video_path)  # Lossy compression
+
+
+            
+            
+

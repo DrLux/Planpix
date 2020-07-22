@@ -20,6 +20,11 @@ class MPCPlanner(jit.ScriptModule):
         belief, state = belief.unsqueeze(dim=1).expand(B, self.candidates, H).reshape(-1, H), state.unsqueeze(dim=1).expand(B, self.candidates, Z).reshape(-1, Z)
         # Initialize factorized belief over action sequences q(a_t:t+H) ~ N(0, I)
         action_mean, action_std_dev = torch.zeros(self.planning_horizon, B, 1, self.action_size, device=belief.device), torch.ones(self.planning_horizon, B, 1, self.action_size, device=belief.device)
+        
+        beliefs = torch.tensor([self.planning_horizon, self.candidates, H])
+        states = torch.tensor([self.planning_horizon,self.candidates,Z])
+        planned_actions = torch.tensor([self.planning_horizon,self.action_size])
+        
         for _ in range(self.optimisation_iters):
             # Evaluate J action sequences from the current belief (over entire sequence at once, batched over particles)
             actions = (action_mean + action_std_dev * torch.randn(self.planning_horizon, B, self.candidates, self.action_size, device=action_mean.device)).view(self.planning_horizon, B * self.candidates, self.action_size)  # Sample actions (time x (batch x candidates) x actions)
@@ -29,11 +34,30 @@ class MPCPlanner(jit.ScriptModule):
             # Calculate expected returns (technically sum of rewards over planning horizon)
             returns = self.reward_model(beliefs.view(-1, H), states.view(-1, Z)).view(self.planning_horizon, -1).sum(dim=0)
             # Re-fit belief to the K best action sequences
-            _, topk = returns.reshape(B, self.candidates).topk(self.top_candidates, dim=1, largest=True, sorted=False)
+            _, topk = returns.reshape(B, self.candidates).topk(self.top_candidates, dim=1, largest=True, sorted=False) # topk = 100 indexes
             topk += self.candidates * torch.arange(0, B, dtype=torch.int64, device=topk.device).unsqueeze(dim=1)  # Fix indices for unrolled actions
-            best_actions = actions[:, topk.view(-1)].reshape(self.planning_horizon, B, self.top_candidates, self.action_size)
+            best_actions = actions[:, topk.view(-1)].reshape(self.planning_horizon, B, self.top_candidates, self.action_size)# take the best 100 actions (the final best action is the mean of them)
+            
+            ###### prepare belief and states
+
+            #beliefs = beliefs[:, topk.view(-1)] #take 100 best beliefs
+            #states = states[:, topk.view(-1)] #take 100 best states
+            #planned_actions = actions[:, topk.view(-1)] #take 100 best actions
+
+            ##### Get 1 of top 100 candated. three methods
+            #beliefs = beliefs[:,-1,:] 
+            #beliefs = beliefs.mean(dim=1, keepdim=False) #usare questo
+
+            #states = states[:,-1,:]
+            #states = states.mean(dim=1, keepdim=False) #usare questo
+
+            #planned_actions = planned_actions[:,-1,:]
+            #planned_actions = planned_actions.mean(dim=1, keepdim=False) #usare questo
+
+            #######################################################
+
             # Update belief with new means and standard deviations
             action_mean, action_std_dev = best_actions.mean(dim=2, keepdim=True), best_actions.std(dim=2, unbiased=False, keepdim=True)
         # Return first action mean µ_t
-        return action_mean[0].squeeze(dim=1)
+        return action_mean[0].squeeze(dim=1), beliefs, states,planned_actions
         

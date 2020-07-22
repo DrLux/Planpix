@@ -6,7 +6,7 @@ class Parameters():
 
 
         ### ENV ####
-        self.env_name = 'reacher-easy'
+        self.env_name = 'reacher-hard'
         self.seed = 15
         self.max_episode_length = 1000
         self.bit_depth = 5
