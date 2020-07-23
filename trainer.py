@@ -59,17 +59,12 @@ class Trainer():
 
         ##### add reward to the encoded obs
         encoded_obs = self.encoder(observation).unsqueeze(dim=0)
-        reward = torch.tensor([reward], dtype=torch.float).unsqueeze(dim=0)
-        reward = reward.to(self.parms.device).unsqueeze(dim=0)
-
-        #print(reward)
-        #.double().to(self.parms.device)
-        #rew_as_obs = torch.tensor([reward]).type(torch.float).unsqueeze(dim=0)
-        #rew_as_obs = rew_as_obs.unsqueeze(dim=0).cuda()
-        #enc_obs_with_rew = torch.cat([encoded_obs, rew_as_obs], dim=2)
+        rew_as_obs = torch.tensor([reward]).type(torch.float).unsqueeze(dim=0)
+        rew_as_obs = rew_as_obs.unsqueeze(dim=0).cuda()
+        enc_obs_with_rew = torch.cat([encoded_obs, rew_as_obs], dim=2)
         #####
 
-        belief, _, _, _, posterior_state, _, _ = self.transition_model(posterior_state, action.unsqueeze(dim=0), belief, encoded_obs,rewards=reward)  # Action and observation need extra time dimension
+        belief, _, _, _, posterior_state, _, _ = self.transition_model(posterior_state, action.unsqueeze(dim=0), belief, enc_obs_with_rew)  # Action and observation need extra time dimension
         belief, posterior_state = belief.squeeze(dim=0), posterior_state.squeeze(dim=0)  # Remove time dimension from belief/state
         action,_,_,_ = self.planner(belief, posterior_state)  # Get action from planner(q(s_t|o≤t,a<t), p)      
         if explore:
@@ -95,12 +90,12 @@ class Trainer():
             
             ###
             encoded_obs = bottle(self.encoder, (observations[1:], ))
-            #enc_obs_with_rew = torch.cat([encoded_obs, torch.unsqueeze(rewards[:-1], dim=2)], dim=2) #aggiunge all'obs il reward precedente (obs_x,rew_x-1) 
+            enc_obs_with_rew = torch.cat([encoded_obs, torch.unsqueeze(rewards[:-1], dim=2)], dim=2) #aggiunge all'obs il reward precedente (obs_x,rew_x-1) 
             ####
 
             # Update belief/state using posterior from previous belief/state, previous action and current observation (over entire sequence at once)
             #beliefs, prior_states, prior_means, prior_std_devs, posterior_states, posterior_means, posterior_std_devs = self.transition_model(init_state, actions[:-1], init_belief, bottle(self.encoder, (observations[1:], )), nonterminals[:-1])
-            beliefs, prior_states, prior_means, prior_std_devs, posterior_states, posterior_means, posterior_std_devs = self.transition_model(init_state, actions[:-1], init_belief, encoded_obs, nonterminals[:-1], rewards[:-1].unsqueeze(-1))
+            beliefs, prior_states, prior_means, prior_std_devs, posterior_states, posterior_means, posterior_std_devs = self.transition_model(init_state, actions[:-1], init_belief, enc_obs_with_rew, nonterminals[:-1])
             # Calculate observation likelihood, reward likelihood and KL losses (for t = 0 only for latent overshooting); sum over final dims, average over batch and time (original implementation, though paper seems to miss 1/T scaling?)
             # LOSS
             observation_loss = F.mse_loss(bottle(self.observation_model, (beliefs, posterior_states)), observations[1:], reduction='none').sum((2, 3, 4)).mean(dim=(0, 1))
@@ -138,10 +133,6 @@ class Trainer():
             t = 0
             for t in tqdm(range(self.parms.max_episode_length // self.env.action_repeat)):
                 # QUI INVECE ESPLORI
-                #print("aaaaaa")
-                #print(torch.tensor([reward]).to(device=self.parms.device))
-                #print(action)
-                #print("bbbbbb")
 
                 belief, posterior_state, action, next_observation, reward, done = self.update_belief_and_act(self.env, belief, posterior_state, action, observation.to(device=self.parms.device), reward, self.env.action_range[0], self.env.action_range[1], explore=True)
                 self.D.append(observation, action.cpu(), reward, done)

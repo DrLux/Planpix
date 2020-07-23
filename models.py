@@ -50,11 +50,10 @@ class TransitionModel(jit.ScriptModule):
         self.act_fn = getattr(F, activation_function)
         self.min_std_dev = min_std_dev
         self.fc_embed_state_action = nn.Linear(state_size + action_size, belief_size) 
-        self.fc_embed_state_action_reward = nn.Linear(state_size + action_size + 1, belief_size) # +1 is the reward
         self.rnn = nn.GRUCell(belief_size, belief_size)
         self.fc_embed_belief_prior = nn.Linear(belief_size, hidden_size)
         self.fc_state_prior = nn.Linear(hidden_size, 2 * state_size)
-        self.fc_embed_belief_posterior = nn.Linear(belief_size + embedding_size, hidden_size) 
+        self.fc_embed_belief_posterior = nn.Linear(belief_size + embedding_size +1, hidden_size)# +1 is the reward 
         self.fc_state_posterior = nn.Linear(hidden_size, 2 * state_size)
 
     @jit.script_method
@@ -69,10 +68,7 @@ class TransitionModel(jit.ScriptModule):
             _state = prior_states[t] if observations is None else posterior_states[t]  # Select appropriate previous state
             _state = _state if nonterminals is None else _state * nonterminals[t]  # Mask if previous transition was terminal
             # Compute belief (deterministic hidden state)
-            if rewards is None:
-                hidden = self.act_fn(self.fc_embed_state_action(torch.cat([_state, actions[t]], dim=1)))
-            else:
-                hidden = self.act_fn(self.fc_embed_state_action_reward(torch.cat([_state, actions[t], rewards[t]], dim=1)))
+            hidden = self.act_fn(self.fc_embed_state_action(torch.cat([_state, actions[t]], dim=1)))
 
             beliefs[t + 1] = self.rnn(hidden, beliefs[t])
             # Compute state prior by applying transition dynamics
