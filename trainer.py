@@ -54,11 +54,24 @@ class Trainer():
         else:
             print("Checkpoints not found!")
     
-    def update_belief_and_act(self, env, belief, posterior_state, action, observation, min_action=-inf, max_action=inf, explore=False):
+    def update_belief_and_act(self, env, belief, posterior_state, action, observation, reward, min_action=-inf, max_action=inf,explore=False):
         # Infer belief over current state q(s_t|o≤t,a<t) from the history
-        belief, _, _, _, posterior_state, _, _ = self.transition_model(posterior_state, action.unsqueeze(dim=0), belief, self.encoder(observation).unsqueeze(dim=0))  # Action and observation need extra time dimension
+
+        ##### add reward to the encoded obs
+        encoded_obs = self.encoder(observation).unsqueeze(dim=0)
+        reward = torch.tensor([reward], dtype=torch.float).unsqueeze(dim=0)
+        reward = reward.to(self.parms.device).unsqueeze(dim=0)
+
+        #print(reward)
+        #.double().to(self.parms.device)
+        #rew_as_obs = torch.tensor([reward]).type(torch.float).unsqueeze(dim=0)
+        #rew_as_obs = rew_as_obs.unsqueeze(dim=0).cuda()
+        #enc_obs_with_rew = torch.cat([encoded_obs, rew_as_obs], dim=2)
+        #####
+
+        belief, _, _, _, posterior_state, _, _ = self.transition_model(posterior_state, action.unsqueeze(dim=0), belief, encoded_obs,rewards=reward)  # Action and observation need extra time dimension
         belief, posterior_state = belief.squeeze(dim=0), posterior_state.squeeze(dim=0)  # Remove time dimension from belief/state
-        action = self.planner(belief, posterior_state)  # Get action from planner(q(s_t|o≤t,a<t), p)      
+        action,_,_,_ = self.planner(belief, posterior_state)  # Get action from planner(q(s_t|o≤t,a<t), p)      
         if explore:
             action = action + self.parms.action_noise * torch.randn_like(action)  # Add exploration noise ε ~ p(ε) to the action
         action.clamp_(min=min_action, max=max_action)  # Clip action range
@@ -79,8 +92,15 @@ class Trainer():
             observations, actions, rewards, nonterminals = self.D.sample(self.parms.batch_size, self.parms.chunk_size)  # Transitions start at time t = 0
             # Create initial belief and state for time t = 0
             init_belief, init_state = torch.zeros(self.parms.batch_size, self.parms.belief_size, device=self.parms.device), torch.zeros(self.parms.batch_size, self.parms.state_size, device=self.parms.device)
+            
+            ###
+            encoded_obs = bottle(self.encoder, (observations[1:], ))
+            #enc_obs_with_rew = torch.cat([encoded_obs, torch.unsqueeze(rewards[:-1], dim=2)], dim=2) #aggiunge all'obs il reward precedente (obs_x,rew_x-1) 
+            ####
+
             # Update belief/state using posterior from previous belief/state, previous action and current observation (over entire sequence at once)
-            beliefs, prior_states, prior_means, prior_std_devs, posterior_states, posterior_means, posterior_std_devs = self.transition_model(init_state, actions[:-1], init_belief, bottle(self.encoder, (observations[1:], )), nonterminals[:-1])
+            #beliefs, prior_states, prior_means, prior_std_devs, posterior_states, posterior_means, posterior_std_devs = self.transition_model(init_state, actions[:-1], init_belief, bottle(self.encoder, (observations[1:], )), nonterminals[:-1])
+            beliefs, prior_states, prior_means, prior_std_devs, posterior_states, posterior_means, posterior_std_devs = self.transition_model(init_state, actions[:-1], init_belief, encoded_obs, nonterminals[:-1], rewards[:-1].unsqueeze(-1))
             # Calculate observation likelihood, reward likelihood and KL losses (for t = 0 only for latent overshooting); sum over final dims, average over batch and time (original implementation, though paper seems to miss 1/T scaling?)
             # LOSS
             observation_loss = F.mse_loss(bottle(self.observation_model, (beliefs, posterior_states)), observations[1:], reduction='none').sum((2, 3, 4)).mean(dim=(0, 1))
@@ -93,22 +113,23 @@ class Trainer():
             nn.utils.clip_grad_norm_(self.param_list, self.parms.grad_clip_norm, norm_type=2)
             self.optimiser.step()
             # Store (0) observation loss (1) reward loss (2) KL loss
-            #losses.append([observation_loss.item(), reward_loss.item(), kl_loss.item()])
-            self.metrics['observation_loss'].append(observation_loss.item() )
-            self.metrics['reward_loss'].append(reward_loss.item() ) 
-            self.metrics['kl_loss'].append(kl_loss.item() )
+            losses.append([observation_loss.item(), reward_loss.item(), kl_loss.item()])
+            #self.metrics['observation_loss'].append(observation_loss.item() )
+            #self.metrics['reward_loss'].append(reward_loss.item() ) 
+            #self.metrics['kl_loss'].append(kl_loss.item() )
 
         #save statistics and plot them
-        #losses = tuple(zip(*losses))  #PROVA A RIFARLO SENZA LOSSES
-        #self.metrics['observation_loss'].append(losses[0])
-        #self.metrics['reward_loss'].append(losses[1])
-        #self.metrics['kl_loss'].append(losses[2])
+        losses = tuple(zip(*losses))  #PROVA A RIFARLO SENZA LOSSES
+        self.metrics['observation_loss'].append(losses[0])
+        self.metrics['reward_loss'].append(losses[1])
+        self.metrics['kl_loss'].append(losses[2])
         lineplot(self.metrics['episodes'][-len(self.metrics['observation_loss']):], self.metrics['observation_loss'], 'observation_loss', self.results_dir)
         lineplot(self.metrics['episodes'][-len(self.metrics['reward_loss']):], self.metrics['reward_loss'], 'reward_loss', self.results_dir)
         lineplot(self.metrics['episodes'][-len(self.metrics['kl_loss']):], self.metrics['kl_loss'], 'kl_loss', self.results_dir)
         
     def explore_and_collect(self,episode):
         tqdm.write("Collect new data:")
+        reward = 0
         # Data collection
         with torch.no_grad():
             done = False
@@ -117,7 +138,12 @@ class Trainer():
             t = 0
             for t in tqdm(range(self.parms.max_episode_length // self.env.action_repeat)):
                 # QUI INVECE ESPLORI
-                belief, posterior_state, action, next_observation, reward, done = self.update_belief_and_act(self.env, belief, posterior_state, action, observation.to(device=self.parms.device), self.env.action_range[0], self.env.action_range[1], explore=True)
+                #print("aaaaaa")
+                #print(torch.tensor([reward]).to(device=self.parms.device))
+                #print(action)
+                #print("bbbbbb")
+
+                belief, posterior_state, action, next_observation, reward, done = self.update_belief_and_act(self.env, belief, posterior_state, action, observation.to(device=self.parms.device), reward, self.env.action_range[0], self.env.action_range[1], explore=True)
                 self.D.append(observation, action.cpu(), reward, done)
                 total_reward += reward
                 observation = next_observation
@@ -157,13 +183,14 @@ class Trainer():
         self.encoder.eval()
         # Initialise parallelised test environments
         test_envs = EnvBatcher(ControlSuiteEnv, (self.parms.env_name, self.parms.seed, self.parms.max_episode_length, self.parms.bit_depth), {}, self.parms.test_episodes)
+        reward = 0
 
         with torch.no_grad():
             observation, total_rewards, video_frames = test_envs.reset(), np.zeros((self.parms.test_episodes, )), []
             belief, posterior_state, action = torch.zeros(self.parms.test_episodes, self.parms.belief_size, device=self.parms.device), torch.zeros(self.parms.test_episodes, self.parms.state_size, device=self.parms.device), torch.zeros(self.parms.test_episodes, self.env.action_size, device=self.parms.device)
             tqdm.write("Testing model.")
             for t in range(self.parms.max_episode_length // test_envs.action_repeat): #floor division
-                belief, posterior_state, action, next_observation, reward, done = self.update_belief_and_act(test_envs,  belief, posterior_state, action, observation.to(device=self.parms.device), self.env.action_range[0], self.env.action_range[1])
+                belief, posterior_state, action, next_observation, reward, done = self.update_belief_and_act(test_envs,  belief, posterior_state, action, observation.to(device=self.parms.device), reward, self.env.action_range[0], self.env.action_range[1])
                 total_rewards += reward.numpy()
                 # Collect real vs. predicted frames for video
                 #observation_model(belief, posterior_state).cpu() ->  torch.from_numpy(prova).float
@@ -204,7 +231,7 @@ class Trainer():
             tqdm.write("Testing model.")
 
             observation = observation.to(device=self.parms.device)
-            belief, _, _, _, posterior_state, _, _ = self.transition_model(posterior_state, action.unsqueeze(dim=0), belief, self.encoder(observation).unsqueeze(dim=0))  
+            #belief, _, _, _, posterior_state, _, _ = self.transition_model(posterior_state, action.unsqueeze(dim=0), belief, self.encoder(observation).unsqueeze(dim=0))  
 
             belief, posterior_state = belief.squeeze(dim=0), posterior_state.squeeze(dim=0)  # Remove time dimension from belief/state
             

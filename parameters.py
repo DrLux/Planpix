@@ -6,7 +6,7 @@ class Parameters():
 
 
         ### ENV ####
-        self.env_name = 'reacher-hard'
+        self.env_name = 'walker-walk'
         self.seed = 15
         self.max_episode_length = 1000
         self.bit_depth = 5
@@ -27,7 +27,7 @@ class Parameters():
         
 
         # Planner
-        self.planning_horizon = 12
+        self.planning_horizon = 12 #20
         self.optimisation_iters = 10
         self.candidates = 1000
         self.top_candidates = 100
@@ -52,5 +52,5 @@ class Parameters():
         self.collect_interval = 100 #numero di campioni che peschi dal buffer ad ogni iterazione 
         self.chunk_size = 50
         self.grad_clip_norm = 1000
-        self.test_interval = 25
-        self.checkpoint_interval  = 25
+        self.test_interval = 20
+        self.checkpoint_interval  = 20
