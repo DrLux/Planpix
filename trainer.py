@@ -59,8 +59,8 @@ class Trainer():
 
         ##### add reward to the encoded obs
         encoded_obs = self.encoder(observation).unsqueeze(dim=0)
-        rew_as_obs = torch.tensor([reward]).type(torch.float).unsqueeze(dim=0)
-        rew_as_obs = rew_as_obs.unsqueeze(dim=0).cuda()
+        rew_as_obs = torch.tensor(reward).type(torch.float).unsqueeze(dim=0)
+        rew_as_obs = rew_as_obs.unsqueeze(dim=-1).cuda()
         enc_obs_with_rew = torch.cat([encoded_obs, rew_as_obs], dim=2)
         #####
 
@@ -134,7 +134,7 @@ class Trainer():
             for t in tqdm(range(self.parms.max_episode_length // self.env.action_repeat)):
                 # QUI INVECE ESPLORI
 
-                belief, posterior_state, action, next_observation, reward, done = self.update_belief_and_act(self.env, belief, posterior_state, action, observation.to(device=self.parms.device), reward, self.env.action_range[0], self.env.action_range[1], explore=True)
+                belief, posterior_state, action, next_observation, reward, done = self.update_belief_and_act(self.env, belief, posterior_state, action, observation.to(device=self.parms.device), [reward], self.env.action_range[0], self.env.action_range[1], explore=True)
                 self.D.append(observation, action.cpu(), reward, done)
                 total_reward += reward
                 observation = next_observation
@@ -154,7 +154,7 @@ class Trainer():
     def train_models(self):
         # da (num_episodi_per_inizializzare) a (training_episodes + episodi_per_inizializzare)
         tqdm.write("Start training.")
-        for episode in tqdm(range(self.parms.num_init_episodes +1, self.parms.num_init_episodes + self.parms.training_episodes) ):
+        for episode in tqdm(range(self.parms.num_init_episodes +1, self.parms.training_episodes) ):
             self.fit_buffer(episode)       
             self.explore_and_collect(episode)
             if episode % self.parms.test_interval == 0:
@@ -174,15 +174,15 @@ class Trainer():
         self.encoder.eval()
         # Initialise parallelised test environments
         test_envs = EnvBatcher(ControlSuiteEnv, (self.parms.env_name, self.parms.seed, self.parms.max_episode_length, self.parms.bit_depth), {}, self.parms.test_episodes)
-        reward = 0
+        rewards = np.zeros(self.parms.test_episodes)
 
         with torch.no_grad():
             observation, total_rewards, video_frames = test_envs.reset(), np.zeros((self.parms.test_episodes, )), []
             belief, posterior_state, action = torch.zeros(self.parms.test_episodes, self.parms.belief_size, device=self.parms.device), torch.zeros(self.parms.test_episodes, self.parms.state_size, device=self.parms.device), torch.zeros(self.parms.test_episodes, self.env.action_size, device=self.parms.device)
             tqdm.write("Testing model.")
             for t in range(self.parms.max_episode_length // test_envs.action_repeat): #floor division
-                belief, posterior_state, action, next_observation, reward, done = self.update_belief_and_act(test_envs,  belief, posterior_state, action, observation.to(device=self.parms.device), reward, self.env.action_range[0], self.env.action_range[1])
-                total_rewards += reward.numpy()
+                belief, posterior_state, action, next_observation, rewards, done = self.update_belief_and_act(test_envs,  belief, posterior_state, action, observation.to(device=self.parms.device), list(rewards), self.env.action_range[0], self.env.action_range[1])
+                total_rewards += rewards.numpy()
                 # Collect real vs. predicted frames for video
                 #observation_model(belief, posterior_state).cpu() ->  torch.from_numpy(prova).float
                 #save_image(torch.as_tensor(frames[-1]), os.path.join(results_dir, 'test_episode_%s.png' % t))

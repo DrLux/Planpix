@@ -5,6 +5,8 @@ from env import ControlSuiteEnv
 from memory import ExperienceReplay
 from trainer import Trainer
 from tqdm import tqdm
+import random
+import numpy as np
 
 
 class Initializer():
@@ -21,39 +23,56 @@ class Initializer():
         #os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
         #os.environ["CUDA_VISIBLE_DEVICES"]= str(self.parms.gpu_id)
         #export CUDA_VISIBLE_DEVICES=0
-        torch.cuda.set_device(self.parms.gpu_id)
         self.parms.device = torch.device('cuda')
-        #torch.cuda.manual_seed(self.parms.seed)
+        torch.cuda.set_device(self.parms.gpu_id)
         print("Using gpu: ", torch.cuda.current_device())
       else:
         self.parms.device = torch.device('cpu')
+        self.use_cuda = False
         print("Work on: ", self.parms.device)
       
       # Initilize buffer experience replay
       self.env = ControlSuiteEnv(self.parms.env_name, self.parms.seed, self.parms.max_episode_length, self.parms.bit_depth)
       self.D = ExperienceReplay(self.parms.ex_replay_buff_size, self.env.observation_size, self.env.action_size, self.parms.bit_depth, self.parms.device)
+      
+      if self.parms.seed > 0: 
+        self.set_seed()
+
       print("Starting initialization buffer.")
       self.init_exp_rep()
       
+      #obs,act,next_obs, term, next_term =self.D.get_trajectories(self.parms.reg_batch_size,self.parms.reg_chunck_len)
       
       self.trainer = Trainer(self.parms,self.D,self.metrics,self.results_dir,self.env)
       
       # Load checkpoints
       #self.trainer.load_checkpoints()
       #self.trainer.dump_plan()
-      print("Total training episodes: ", self.parms.training_episodes, " Buffer sampling: ", self.parms.collect_interval)
+      #print("Total training episodes: ", self.parms.training_episodes, " Buffer sampling: ", self.parms.collect_interval)
       self.trainer.train_models()
       #self.trainer.test_model()
+      
+      #selt.trainer.train_regularizer()
+      
       self.env.close()
-      print("END.")
+      #print("END.")
       
 
 
   def set_seed(self):
-      os.environ['PYTHONHASHSEED']=str(self.parms.seed)
-      random.seed(self.parms.seed)
-      np.random.seed(self.parms.seed)
-      torch.manual_seed(self.parms.seed)   
+    print("Setting seed")
+    os.environ['PYTHONHASHSEED']=str(self.parms.seed)
+    random.seed(self.parms.seed)
+    np.random.seed(self.parms.seed)
+    torch.manual_seed(self.parms.seed)   
+    self.env.set_seed(self.parms.seed)
+    if self.parms.use_cuda:
+      torch.cuda.manual_seed(self.parms.seed)
+      torch.manual_seed(self.parms.seed)
+      torch.backends.cudnn.enabled=False
+      torch.backends.cudnn.deterministic=True
+        
+
 
   def init_exp_rep(self):
     for s in tqdm(range(1, self.parms.num_init_episodes +1)):

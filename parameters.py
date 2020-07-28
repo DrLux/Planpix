@@ -2,18 +2,20 @@
 class Parameters():
     def __init__(self):
         # Parametri che cambio più frequentemente
-        self.gpu_id = 0
+        self.gpu_id = 1
+        self.seed = 0#123
+        self.num_init_episodes = 3
+        self.collect_interval = 10 
 
 
         ### ENV ####
-        self.env_name = 'walker-walk'
-        self.seed = 15
+        self.env_name = 'cheetah-run'#'walker-walk'
         self.max_episode_length = 1000
         self.bit_depth = 5
         
         ### Experience Replay
         self.ex_replay_buff_size = 1000000
-        self.num_init_episodes = 5 #primo episodio random per inizializzare il buffer
+        #self.num_init_episodes = 5 #primo episodio random per inizializzare il buffer
         
         # Setup
         #self.results_dir = os.path.join('/home/luca/Desktop/luca/agosto/experience/')
@@ -27,10 +29,14 @@ class Parameters():
         
 
         # Planner
-        self.planning_horizon = 12 #20
+        self.planning_horizon = 20
         self.optimisation_iters = 10
         self.candidates = 1000
         self.top_candidates = 100
+
+        # Regularizer
+        self.reg_batch_size = 2
+        self.reg_chunck_len = 3
 
         # Learning
         self.activation_function = 'relu'
@@ -43,14 +49,14 @@ class Parameters():
         self.batch_size = 50
         
         # Interactions with the environment
-        self.free_nats = 1#3 # nella loss di KL invece di prendere il valore maggiore di distanza prende la media dei 3 valori 
+        self.free_nats = 3 # nella loss di KL invece di prendere il valore maggiore di distanza prende la media dei 3 valori 
         self.action_noise = 0.3
-        self.test_episodes = 1#3
+        self.test_episodes = 3
         self.flag_render = False
         self.max_episode_length = 1000
         self.training_episodes = 502
-        self.collect_interval = 100 #numero di campioni che peschi dal buffer ad ogni iterazione 
+        #self.collect_interval = 100 #numero di campioni che peschi dal buffer ad ogni iterazione 
         self.chunk_size = 50
         self.grad_clip_norm = 1000
-        self.test_interval = 20
+        self.test_interval = 1#20
         self.checkpoint_interval  = 20

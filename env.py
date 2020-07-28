@@ -10,7 +10,7 @@ import torch
 import PIL.Image as PilImage
 
 
-CONTROL_SUITE_ENVS = ['cartpole-balance', 'cartpole-swingup', 'reacher-easy','reacher-hard', 'finger-spin', 'c', 'ball_in_cup-catch', 'walker-walk']
+CONTROL_SUITE_ENVS = ['cartpole-balance', 'cartpole-swingup', 'reacher-easy','reacher-hard', 'finger-spin', 'cheetah-run', 'ball_in_cup-catch', 'walker-walk']
 CONTROL_SUITE_ACTION_REPEATS = {'cartpole': 8, 'reacher': 4, 'finger': 2, 'cheetah': 4, 'ball_in_cup': 6, 'walker': 2}
 
 
@@ -33,13 +33,15 @@ def _images_to_observation(images, bit_depth):
 class ControlSuiteEnv():
     def __init__(self, env_name, seed, max_episode_length, bit_depth):
         domain, task = env_name.split('-')
-        self._env = suite.load(domain_name=domain, task_name=task, task_kwargs={'random': seed})
+        self._env = suite.load(domain_name=domain, task_name=task)#, task_kwargs={'random': seed})
         self._env = pixels.Wrapper(self._env)
         self.max_episode_length = max_episode_length
         self.action_repeat = CONTROL_SUITE_ACTION_REPEATS[domain]
         self.bit_depth = bit_depth
 
-
+    def set_seed(self, seed):
+        self._env.seed = seed
+    
     def reset(self):
         self.t = 0  # Reset internal timer
         state = self._env.reset()

@@ -12,35 +12,21 @@ def bottle(f, x_tuple):
     y_size = y.size()
     return y.view(x_sizes[0][0], x_sizes[0][1], *y_size[1:])
 
+class Regularizer():
 
-    '''
-    class Regulizer():
-        #DAE with (obs, act, next obs) as the data
+    #DAE with (obs, act, next obs) as the data
+    def __init__(self,obs_size, act_size, hidden_size, num_hidden_layers, device,act_fn='relu'):
+        super().__init__()
         
-        def __init__(self,embedding_size, activation_function='relu'):
-            super().__init__()
-            layers = [nn.Linear(cfg.obs_size*2+cfg.act_size, self.cfg.regularizer.hidden_size), act_fn()]
-            if self.cfg.regularizer.batch_norm:
-                layers.append(nn.BatchNorm1d(self.cfg.regularizer.hidden_size))
+        layers = [nn.Linear(obs_size*2 + act_size, hidden_size), act_fn()] #Encoded layers
+        for _ in range(num_hidden_layers):
+            layers.append(nn.Lunear(hidden_size, hidden_size))
+            layers.append(act_fn())
+        
+        layers.append(nn.Linear(hidden_size, obs_size*2 + act_size))
+        self.network = nn.Sequential(*layers).to(device)
+        self.optimizer = torch.optim.Adam(self.network.parameters())
 
-            self.act_fn = getattr(F, activation_function)
-            self.embedding_size = embedding_size
-            self.conv1 = nn.Conv2d(3, 32, 4, stride=2)
-            self.conv2 = nn.Conv2d(32, 64, 4, stride=2)
-            self.conv3 = nn.Conv2d(64, 128, 4, stride=2)
-            self.conv4 = nn.Conv2d(128, 256, 4, stride=2)
-            self.fc = nn.Identity() if embedding_size == 1024 else nn.Linear(1024, embedding_size)
-
-
-        def encoder(self, sequence):
-            hidden = relu(self.conv1(observation))
-            hidden = self.act_fn(self.conv2(hidden))
-            hidden = self.act_fn(self.conv3(hidden))
-            hidden = self.act_fn(self.conv4(hidden))
-            hidden = hidden.view(-1, 1024)
-            hidden = self.fc(hidden)  # Identity if embedding size is 1024 else linear projection
-            return hidden
-    '''
 
 class TransitionModel(jit.ScriptModule):
     __constants__ = ['min_std_dev']
