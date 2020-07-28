@@ -9,7 +9,7 @@ class Parameters():
 
 
         ### ENV ####
-        self.env_name = 'cheetah-run'#'walker-walk'
+        self.env_name = 'walker-walk'#'cheetah-run'
         self.max_episode_length = 1000
         self.bit_depth = 5
         
@@ -29,7 +29,7 @@ class Parameters():
         
 
         # Planner
-        self.planning_horizon = 20
+        self.planning_horizon = 15#12
         self.optimisation_iters = 10
         self.candidates = 1000
         self.top_candidates = 100

@@ -54,6 +54,7 @@ class Trainer():
         else:
             print("Checkpoints not found!")
     
+    
     def update_belief_and_act(self, env, belief, posterior_state, action, observation, reward, min_action=-inf, max_action=inf,explore=False):
         # Infer belief over current state q(s_t|o≤t,a<t) from the history
 
@@ -64,6 +65,7 @@ class Trainer():
         enc_obs_with_rew = torch.cat([encoded_obs, rew_as_obs], dim=2)
         #####
 
+
         belief, _, _, _, posterior_state, _, _ = self.transition_model(posterior_state, action.unsqueeze(dim=0), belief, enc_obs_with_rew)  # Action and observation need extra time dimension
         belief, posterior_state = belief.squeeze(dim=0), posterior_state.squeeze(dim=0)  # Remove time dimension from belief/state
         action,_,_,_ = self.planner(belief, posterior_state)  # Get action from planner(q(s_t|o≤t,a<t), p)      
@@ -71,6 +73,7 @@ class Trainer():
             action = action + self.parms.action_noise * torch.randn_like(action)  # Add exploration noise ε ~ p(ε) to the action
         action.clamp_(min=min_action, max=max_action)  # Clip action range
         next_observation, reward, done = env.step(action.cpu() if isinstance(env, EnvBatcher) else action[0].cpu())  # If single env is istanceted perform single action (get item from list), else perform all actions
+        
         return belief, posterior_state, action, next_observation, reward, done
     
     def fit_buffer(self,episode):
@@ -167,20 +170,21 @@ class Trainer():
     def test_model(self, episode=None): #no explore here
         if episode is None:
             episode = self.tested_episodes
+
         # Set models to eval mode
         self.transition_model.eval()
         self.observation_model.eval()
         self.reward_model.eval()
         self.encoder.eval()
         # Initialise parallelised test environments
-        test_envs = EnvBatcher(ControlSuiteEnv, (self.parms.env_name, self.parms.seed, self.parms.max_episode_length, self.parms.bit_depth), {}, self.parms.test_episodes)
+        test_envs = EnvBatcher(ControlSuiteEnv, (self.parms.env_name, self.parms.seed, self.parms.max_episode_length, self.parms.bit_depth), {}, episode)
         rewards = np.zeros(self.parms.test_episodes)
 
         with torch.no_grad():
             observation, total_rewards, video_frames = test_envs.reset(), np.zeros((self.parms.test_episodes, )), []
             belief, posterior_state, action = torch.zeros(self.parms.test_episodes, self.parms.belief_size, device=self.parms.device), torch.zeros(self.parms.test_episodes, self.parms.state_size, device=self.parms.device), torch.zeros(self.parms.test_episodes, self.env.action_size, device=self.parms.device)
             tqdm.write("Testing model.")
-            for t in range(self.parms.max_episode_length // test_envs.action_repeat): #floor division
+            for t in range(self.parms.max_episode_length // test_envs.action_repeat): #floor division    
                 belief, posterior_state, action, next_observation, rewards, done = self.update_belief_and_act(test_envs,  belief, posterior_state, action, observation.to(device=self.parms.device), list(rewards), self.env.action_range[0], self.env.action_range[1])
                 total_rewards += rewards.numpy()
                 # Collect real vs. predicted frames for video
@@ -207,6 +211,73 @@ class Trainer():
         test_envs.close()
         return self.metrics
 
+
+    
+    #############################################
+    def dump_plan_video(self, step_before_plan=100): 
+        # Set models to eval mode
+        step_before_plan = min(step_before_plan, (self.parms.max_episode_length // self.env.action_repeat))
+        self.transition_model.eval()
+        self.observation_model.eval()
+        self.reward_model.eval()
+        self.encoder.eval()
+        video_frames = []
+        reward = 0
+
+        with torch.no_grad():
+            observation = self.env.reset()
+            belief, posterior_state, action = torch.zeros(1, self.parms.belief_size, device=self.parms.device), torch.zeros(1, self.parms.state_size, device=self.parms.device), torch.zeros(1, self.env.action_size, device=self.parms.device)
+            tqdm.write("Executing episode.")
+            for t in range(step_before_plan): #floor division    
+                belief, posterior_state, action, next_observation, reward, done = self.update_belief_and_act(self.env,  belief, posterior_state, action, observation.to(device=self.parms.device), [reward], self.env.action_range[0], self.env.action_range[1])
+                observation = next_observation
+                video_frames.append(make_grid(torch.cat([observation, self.observation_model(belief, posterior_state).cpu()], dim=3) + 0.5, nrow=5).numpy())  # Decentre
+                if done:
+                    break
+            print("Dumping video")
+            write_video(video_frames, 'dump_episode', self.video_path)  
+            self.create_and_dump_plan(self.env,  belief, posterior_state, action, observation.to(device=self.parms.device), [reward], self.env.action_range[0], self.env.action_range[1])
+            
+            
+        # Set models to train mode
+        self.transition_model.train()
+        self.observation_model.train()
+        self.reward_model.train()
+        self.encoder.train()
+        # Close test environments
+        self.env.close()
+
+
+    def create_and_dump_plan(self, env, belief, posterior_state, action, observation, reward, min_action=-inf, max_action=inf): 
+        tqdm.write("Dumping plan")
+        video_frames = []
+
+        ##### add reward to the encoded obs
+        encoded_obs = self.encoder(observation).unsqueeze(dim=0)
+        rew_as_obs = torch.tensor(reward).type(torch.float).unsqueeze(dim=0)
+        rew_as_obs = rew_as_obs.unsqueeze(dim=-1).cuda()
+        enc_obs_with_rew = torch.cat([encoded_obs, rew_as_obs], dim=2)
+        #####
+
+        belief, _, _, _, posterior_state, _, _ = self.transition_model(posterior_state, action.unsqueeze(dim=0), belief, enc_obs_with_rew)  
+        belief, posterior_state = belief.squeeze(dim=0), posterior_state.squeeze(dim=0)  # Remove time dimension from belief/state
+        next_action, beliefs, states, plan = self.planner(belief, posterior_state)  # Get action from planner(q(s_t|o≤t,a<t), p)      
+        predicted_frames = self.observation_model(beliefs, states).cpu()
+
+        for i in range(self.parms.planning_horizon):
+            plan[i].clamp_(min=env.action_range[0], max=self.env.action_range[1])  # Clip action range
+            next_observation, reward, done = env.step(plan[i].cpu())  
+            next_observation = next_observation.squeeze(dim=0)
+            video_frames.append(make_grid(torch.cat([next_observation, predicted_frames[i]], dim=1) + 0.5, nrow=2).numpy())  # Decentre
+            save_image(torch.as_tensor(next_observation), os.path.join(self.results_dir, 'original_obs%d.png' % i))
+            save_image(torch.as_tensor(predicted_frames[i]), os.path.join(self.results_dir, 'prediction_obs%d.png' % i))
+
+
+        write_video(video_frames, 'dump_plan', self.video_path)  # Lossy compression
+    
+    
+    
+    '''
     def dump_plan(self): 
         # Set models to eval mode
         self.transition_model.eval()
@@ -217,12 +288,19 @@ class Trainer():
         with torch.no_grad():
             #save_image(torch.as_tensor(observation), os.path.join(self.results_dir, 'intial_obs.png'))
             done = False
-            observation, video_frames = self.env.reset(),[]
+            observation, video_frames, reward = self.env.reset(),[], 0
             belief, posterior_state, action = torch.zeros(1, self.parms.belief_size, device=self.parms.device), torch.zeros(1, self.parms.state_size, device=self.parms.device), torch.zeros(1, self.env.action_size, device=self.parms.device)
-            tqdm.write("Testing model.")
-
+            tqdm.write("Dumping plan")
             observation = observation.to(device=self.parms.device)
-            #belief, _, _, _, posterior_state, _, _ = self.transition_model(posterior_state, action.unsqueeze(dim=0), belief, self.encoder(observation).unsqueeze(dim=0))  
+
+            ##### add reward to the encoded obs
+            encoded_obs = self.encoder(observation).unsqueeze(dim=0)
+            rew_as_obs = torch.tensor([reward]).type(torch.float).unsqueeze(dim=0)
+            rew_as_obs = rew_as_obs.unsqueeze(dim=-1).cuda()
+            enc_obs_with_rew = torch.cat([encoded_obs, rew_as_obs], dim=2)
+            #####
+
+            belief, _, _, _, posterior_state, _, _ = self.transition_model(posterior_state, action.unsqueeze(dim=0), belief, enc_obs_with_rew)  
 
             belief, posterior_state = belief.squeeze(dim=0), posterior_state.squeeze(dim=0)  # Remove time dimension from belief/state
             
@@ -240,8 +318,9 @@ class Trainer():
 
 
             write_video(video_frames, 'dump_plan', self.video_path)  # Lossy compression
-
-
-            
-            
-
+        
+        self.transition_model.train()
+        self.observation_model.train()
+        self.reward_model.train()
+        self.encoder.train()
+    '''

@@ -40,19 +40,19 @@ class MPCPlanner(jit.ScriptModule):
             
             ###### prepare belief and states
 
-            #beliefs = beliefs[:, topk.view(-1)] #take 100 best beliefs
-            #states = states[:, topk.view(-1)] #take 100 best states
-            #planned_actions = actions[:, topk.view(-1)] #take 100 best actions
+            beliefs = beliefs[:, topk.view(-1)] #take 100 best beliefs
+            states = states[:, topk.view(-1)] #take 100 best states
+            planned_actions = actions[:, topk.view(-1)] #take 100 best actions
 
             ##### Get 1 of top 100 candated. three methods
             #beliefs = beliefs[:,-1,:] 
-            #beliefs = beliefs.mean(dim=1, keepdim=False) #usare questo
+            beliefs = beliefs.mean(dim=1, keepdim=False) #usare questo
 
             #states = states[:,-1,:]
-            #states = states.mean(dim=1, keepdim=False) #usare questo
+            states = states.mean(dim=1, keepdim=False) #usare questo
 
             #planned_actions = planned_actions[:,-1,:]
-            #planned_actions = planned_actions.mean(dim=1, keepdim=False) #usare questo
+            planned_actions = planned_actions.mean(dim=1, keepdim=False) #usare questo
 
             #######################################################
 

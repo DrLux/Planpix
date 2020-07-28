@@ -46,12 +46,12 @@ class Initializer():
       self.trainer = Trainer(self.parms,self.D,self.metrics,self.results_dir,self.env)
       
       # Load checkpoints
-      #self.trainer.load_checkpoints()
-      #self.trainer.dump_plan()
+      self.trainer.load_checkpoints()
       #print("Total training episodes: ", self.parms.training_episodes, " Buffer sampling: ", self.parms.collect_interval)
-      self.trainer.train_models()
-      #self.trainer.test_model()
-      
+      #self.trainer.train_models()
+      #self.trainer.test_model(episode=1, dump_plan=True)
+      self.trainer.dump_plan_video()
+
       #selt.trainer.train_regularizer()
       
       self.env.close()
