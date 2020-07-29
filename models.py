@@ -12,21 +12,24 @@ def bottle(f, x_tuple):
     y_size = y.size()
     return y.view(x_sizes[0][0], x_sizes[0][1], *y_size[1:])
 
-class Regularizer():
+class Regularizer(jit.ScriptModule):
 
     #DAE with (obs, act, next obs) as the data
-    def __init__(self,obs_size, act_size, hidden_size, num_hidden_layers, device,act_fn='relu'):
+    def __init__(self,obs_size, act_size, hidden_size, num_hidden_layers,act_fn='relu'):
         super().__init__()
+        self.linear_input_layer = nn.Linear(obs_size*2 + act_size, hidden_size) #input is the concatanation of obs,act,next_obs
+        self.linear_hidden_layer = nn.Linear(hidden_size, hidden_size)
+        self.linear_output_layer =  nn.Linear(hidden_size, obs_size*2 + act_size)   
+        self.act_fn = getattr(F, act_fn)
+        self.num_hidden_layers = num_hidden_layers
         
-        layers = [nn.Linear(obs_size*2 + act_size, hidden_size), act_fn()] #Encoded layers
-        for _ in range(num_hidden_layers):
-            layers.append(nn.Lunear(hidden_size, hidden_size))
-            layers.append(act_fn())
+    def predict(self,input):
+        hidden = self.act_fn(self.linear_input_layer(input))
+        for _ in range(self.num_hidden_layers):
+            hidden = self.act_fn(self.linear_hidden_layer(hidden))
+        output = self.act_fn(self.linear_output_layer(hidden))
+        return output
         
-        layers.append(nn.Linear(hidden_size, obs_size*2 + act_size))
-        self.network = nn.Sequential(*layers).to(device)
-        self.optimizer = torch.optim.Adam(self.network.parameters())
-
 
 class TransitionModel(jit.ScriptModule):
     __constants__ = ['min_std_dev']

@@ -2,10 +2,10 @@
 class Parameters():
     def __init__(self):
         # Parametri che cambio più frequentemente
-        self.gpu_id = 1
+        self.gpu_id = 0
         self.seed = 0#123
         self.num_init_episodes = 3
-        self.collect_interval = 10 
+        #self.collect_interval = 10 
 
 
         ### ENV ####
@@ -29,14 +29,17 @@ class Parameters():
         
 
         # Planner
-        self.planning_horizon = 15#12
+        self.planning_horizon = 12
         self.optimisation_iters = 10
         self.candidates = 1000
         self.top_candidates = 100
 
         # Regularizer
-        self.reg_batch_size = 2
-        self.reg_chunck_len = 3
+        self.reg_batch_size = 64
+        self.reg_chunck_len = 50
+        self.reg_hidden_size = 200
+        self.reg_num_hidden_layers = 3
+        self.noise_std = 0.3
 
         # Learning
         self.activation_function = 'relu'
@@ -55,8 +58,8 @@ class Parameters():
         self.flag_render = False
         self.max_episode_length = 1000
         self.training_episodes = 502
-        #self.collect_interval = 100 #numero di campioni che peschi dal buffer ad ogni iterazione 
+        self.collect_interval = 100 #numero di campioni che peschi dal buffer ad ogni iterazione 
         self.chunk_size = 50
         self.grad_clip_norm = 1000
-        self.test_interval = 1#20
-        self.checkpoint_interval  = 20
+        self.test_interval = 20
+        self.checkpoint_interval = 20

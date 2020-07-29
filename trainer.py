@@ -1,5 +1,5 @@
 from math import inf
-from models import bottle, Encoder, ObservationModel, RewardModel, TransitionModel
+from models import bottle, Encoder, ObservationModel, RewardModel, TransitionModel, Regularizer
 import numpy as np
 from torch import nn, optim
 from planner import MPCPlanner
@@ -31,10 +31,12 @@ class Trainer():
         self.observation_model = ObservationModel(self.parms.belief_size, self.parms.state_size, self.parms.embedding_size, self.parms.activation_function).to(device=self.parms.device)
         self.reward_model = RewardModel(self.parms.belief_size, self.parms.state_size, self.parms.hidden_size, self.parms.activation_function).to(device=self.parms.device)
         self.encoder = Encoder(self.parms.embedding_size,self.parms.activation_function).to(device=self.parms.device)
-        self.param_list = list(self.transition_model.parameters()) + list(self.observation_model.parameters()) + list(self.reward_model.parameters()) + list(self.encoder.parameters())
+        #self.regularizer = Regularizer(self.parms.embedding_size, self.env.action_size, self.parms.reg_hidden_size, self.parms.reg_num_hidden_layers).to(device=self.parms.device)
+        self.regularizer = Regularizer(self.parms.embedding_size, self.env.action_size, self.parms.reg_hidden_size, self.parms.reg_num_hidden_layers).to(device=self.parms.device)
+        self.param_list = list(self.transition_model.parameters()) + list(self.observation_model.parameters()) + list(self.reward_model.parameters()) + list(self.encoder.parameters()) + list(self.regularizer.parameters())
         self.optimiser = optim.Adam(self.param_list, lr=0 if self.parms.learning_rate_schedule != 0 else self.parms.learning_rate, eps=self.parms.adam_epsilon)
         self.planner = MPCPlanner(self.env.action_size, self.parms.planning_horizon, self.parms.optimisation_iters, self.parms.candidates, self.parms.top_candidates, self.transition_model, self.reward_model, self.env.action_range[0], self.env.action_range[1])
-        
+
         global_prior = Normal(torch.zeros(self.parms.batch_size, self.parms.state_size, device=self.parms.device), torch.ones(self.parms.batch_size, self.parms.state_size, device=self.parms.device))  # Global prior N(0, I)
         self.free_nats = torch.full((1, ), self.parms.free_nats, dtype=torch.float32, device=self.parms.device)  # Allowed deviation in KL divergence
 
@@ -177,7 +179,7 @@ class Trainer():
         self.reward_model.eval()
         self.encoder.eval()
         # Initialise parallelised test environments
-        test_envs = EnvBatcher(ControlSuiteEnv, (self.parms.env_name, self.parms.seed, self.parms.max_episode_length, self.parms.bit_depth), {}, episode)
+        test_envs = EnvBatcher(ControlSuiteEnv, (self.parms.env_name, self.parms.seed, self.parms.max_episode_length, self.parms.bit_depth), {}, self.parms.test_episodes)
         rewards = np.zeros(self.parms.test_episodes)
 
         with torch.no_grad():
@@ -276,7 +278,31 @@ class Trainer():
         write_video(video_frames, 'dump_plan', self.video_path)  # Lossy compression
     
     
-    
+    def train_regularizer(self):
+        for i in range (1000):
+            # Prepare data
+            obs,acts,next_obs,_,_ = self.D.get_trajectories(self.parms.reg_batch_size, self.parms.reg_chunck_len)
+            encoded_obs = bottle(self.encoder, (obs,))
+            encoded_next_obs = bottle(self.encoder, (next_obs,))
+            chunk = torch.cat([encoded_obs,acts,encoded_next_obs] , dim=2)
+
+            # add noise to data (denoising autoencoder)
+            noisy_inputs = chunk + torch.randn_like(chunk) * self.parms.noise_std
+
+            # Make prediction and calculate loss
+            pred = self.regularizer.predict(chunk)
+            self.optimiser.zero_grad()
+            regularizer_loss = F.mse_loss(pred, chunk)
+            
+            # Update model parameters
+            regularizer_loss.backward() # BACKPROPAGATION
+            print("loss: ", regularizer_loss)
+            nn.utils.clip_grad_norm_(self.param_list, self.parms.grad_clip_norm, norm_type=2)
+            self.optimiser.step()
+
+        print(pred.shape)
+
+
     '''
     def dump_plan(self): 
         # Set models to eval mode
