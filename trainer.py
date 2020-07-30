@@ -31,11 +31,10 @@ class Trainer():
         self.observation_model = ObservationModel(self.parms.belief_size, self.parms.state_size, self.parms.embedding_size, self.parms.activation_function).to(device=self.parms.device)
         self.reward_model = RewardModel(self.parms.belief_size, self.parms.state_size, self.parms.hidden_size, self.parms.activation_function).to(device=self.parms.device)
         self.encoder = Encoder(self.parms.embedding_size,self.parms.activation_function).to(device=self.parms.device)
-        #self.regularizer = Regularizer(self.parms.embedding_size, self.env.action_size, self.parms.reg_hidden_size, self.parms.reg_num_hidden_layers).to(device=self.parms.device)
-        self.regularizer = Regularizer(self.parms.embedding_size, self.env.action_size, self.parms.reg_hidden_size, self.parms.reg_num_hidden_layers).to(device=self.parms.device)
+        self.regularizer = Regularizer(self.parms.reg_hidden_size,self.env.action_size, self.parms.noise_std).to(device=self.parms.device)
         self.param_list = list(self.transition_model.parameters()) + list(self.observation_model.parameters()) + list(self.reward_model.parameters()) + list(self.encoder.parameters()) + list(self.regularizer.parameters())
         self.optimiser = optim.Adam(self.param_list, lr=0 if self.parms.learning_rate_schedule != 0 else self.parms.learning_rate, eps=self.parms.adam_epsilon)
-        self.planner = MPCPlanner(self.env.action_size, self.parms.planning_horizon, self.parms.optimisation_iters, self.parms.candidates, self.parms.top_candidates, self.transition_model, self.reward_model, self.env.action_range[0], self.env.action_range[1])
+        self.planner = MPCPlanner(self.env.action_size, self.parms.planning_horizon, self.parms.optimisation_iters, self.parms.candidates, self.parms.top_candidates, self.transition_model, self.reward_model, self.regularizer, self.env.action_range[0], self.env.action_range[1])
 
         global_prior = Normal(torch.zeros(self.parms.batch_size, self.parms.state_size, device=self.parms.device), torch.ones(self.parms.batch_size, self.parms.state_size, device=self.parms.device))  # Global prior N(0, I)
         self.free_nats = torch.full((1, ), self.parms.free_nats, dtype=torch.float32, device=self.parms.device)  # Allowed deviation in KL divergence
@@ -52,6 +51,7 @@ class Trainer():
             self.reward_model.load_state_dict(model_dicts['reward_model'])
             self.encoder.load_state_dict(model_dicts['encoder'])
             self.optimiser.load_state_dict(model_dicts['optimiser'])  
+            self.metrics = torch.load(os.path.join(self.results_dir, 'metrics.pth'))
             print("Loading models checkpoints!")
         else:
             print("Checkpoints not found!")
@@ -87,22 +87,43 @@ class Trainer():
         losses = []
         tqdm.write("Fitting buffer")
         for s in tqdm(range(self.parms.collect_interval)):
-
+            
+            # GET DATA
+            
+            # Get data for the transition model
             # Draw sequence chunks {(o_t, a_t, r_t+1, terminal_t+1)} ~ D uniformly at random from the dataset (including terminal flags)
             observations, actions, rewards, nonterminals = self.D.sample(self.parms.batch_size, self.parms.chunk_size)  # Transitions start at time t = 0
             # Create initial belief and state for time t = 0
             init_belief, init_state = torch.zeros(self.parms.batch_size, self.parms.belief_size, device=self.parms.device), torch.zeros(self.parms.batch_size, self.parms.state_size, device=self.parms.device)
             
-            ###
+            # Get data for the regularizer model
+            ####obs,acts,next_obs,_,_ = self.D.get_trajectories(self.parms.reg_batch_size, self.parms.reg_chunck_len)
+
+            # PREPARE DATA
+            
+            # data for the Transition model
             encoded_obs = bottle(self.encoder, (observations[1:], ))
             enc_obs_with_rew = torch.cat([encoded_obs, torch.unsqueeze(rewards[:-1], dim=2)], dim=2) #aggiunge all'obs il reward precedente (obs_x,rew_x-1) 
             ####
 
+            # data for the regularizer model
+            ####encoded_obs = bottle(self.encoder, (obs,))
+            ####encoded_next_obs = bottle(self.encoder, (next_obs,))
+            ####chunk = torch.cat([encoded_obs,acts,encoded_next_obs] , dim=2)
+
+            # add noise to data (denoising autoencoder)
+            ####noisy_inputs = chunk + torch.randn_like(chunk) * self.parms.noise_std
+
+            # MAKE PREDICTION
+
+            # prediction for the Transition model
             # Update belief/state using posterior from previous belief/state, previous action and current observation (over entire sequence at once)
             #beliefs, prior_states, prior_means, prior_std_devs, posterior_states, posterior_means, posterior_std_devs = self.transition_model(init_state, actions[:-1], init_belief, bottle(self.encoder, (observations[1:], )), nonterminals[:-1])
             beliefs, prior_states, prior_means, prior_std_devs, posterior_states, posterior_means, posterior_std_devs = self.transition_model(init_state, actions[:-1], init_belief, enc_obs_with_rew, nonterminals[:-1])
             # Calculate observation likelihood, reward likelihood and KL losses (for t = 0 only for latent overshooting); sum over final dims, average over batch and time (original implementation, though paper seems to miss 1/T scaling?)
+            
             # LOSS
+            ####regularizer_loss = F.mse_loss(self.regularizer.predict(chunk), chunk)
             observation_loss = F.mse_loss(bottle(self.observation_model, (beliefs, posterior_states)), observations[1:], reduction='none').sum((2, 3, 4)).mean(dim=(0, 1))
             reward_loss = F.mse_loss(bottle(self.reward_model, (beliefs, posterior_states)), rewards[:-1], reduction='none').mean(dim=(0, 1))
             kl_loss = torch.max(kl_divergence(Normal(posterior_means, posterior_std_devs), Normal(prior_means, prior_std_devs)).sum(dim=2), self.free_nats).mean(dim=(0, 1))  
@@ -114,15 +135,18 @@ class Trainer():
             self.optimiser.step()
             # Store (0) observation loss (1) reward loss (2) KL loss
             losses.append([observation_loss.item(), reward_loss.item(), kl_loss.item()])
+            #self.metrics['regularizer_loss'].append(regularizer_loss.item() )
             #self.metrics['observation_loss'].append(observation_loss.item() )
             #self.metrics['reward_loss'].append(reward_loss.item() ) 
             #self.metrics['kl_loss'].append(kl_loss.item() )
 
         #save statistics and plot them
         losses = tuple(zip(*losses))  #PROVA A RIFARLO SENZA LOSSES
+        #self.metrics['regularizer_loss'].append(losses[0])
         self.metrics['observation_loss'].append(losses[0])
         self.metrics['reward_loss'].append(losses[1])
         self.metrics['kl_loss'].append(losses[2])
+        #lineplot(self.metrics['episodes'][-len(self.metrics['regularizer_loss']):], self.metrics['regularizer_loss'], 'regularizer_loss', self.results_dir)
         lineplot(self.metrics['episodes'][-len(self.metrics['observation_loss']):], self.metrics['observation_loss'], 'observation_loss', self.results_dir)
         lineplot(self.metrics['episodes'][-len(self.metrics['reward_loss']):], self.metrics['reward_loss'], 'reward_loss', self.results_dir)
         lineplot(self.metrics['episodes'][-len(self.metrics['kl_loss']):], self.metrics['kl_loss'], 'kl_loss', self.results_dir)
@@ -282,71 +306,30 @@ class Trainer():
         for i in range (1000):
             # Prepare data
             obs,acts,next_obs,_,_ = self.D.get_trajectories(self.parms.reg_batch_size, self.parms.reg_chunck_len)
-            encoded_obs = bottle(self.encoder, (obs,))
-            encoded_next_obs = bottle(self.encoder, (next_obs,))
-            chunk = torch.cat([encoded_obs,acts,encoded_next_obs] , dim=2)
+            obs = obs.squeeze(dim=0)
+            acts = acts.squeeze(dim=0)
+            next_obs = next_obs.squeeze(dim=0)
 
-            # add noise to data (denoising autoencoder)
-            noisy_inputs = chunk + torch.randn_like(chunk) * self.parms.noise_std
 
-            # Make prediction and calculate loss
-            pred = self.regularizer.predict(chunk)
-            self.optimiser.zero_grad()
-            regularizer_loss = F.mse_loss(pred, chunk)
+            #encoded_obs = bottle(self.encoder, (obs,))
+            #encoded_next_obs = bottle(self.encoder, (next_obs,))
             
+            # Make prediction and calculate loss
+            pred_obs,pred_acts,pred_next_obs = self.regularizer.predict(obs,acts,next_obs)
+
+            obs = obs.view(obs.shape[0], -1)
+            pred_obs = pred_obs.view(pred_obs.shape[0], -1)
+            next_obs = next_obs.view(next_obs.shape[0], -1)
+            pred_next_obs = pred_next_obs.view(pred_next_obs.shape[0], -1)
+
+            regularizer_loss = F.mse_loss(torch.cat([obs,acts,next_obs], dim=1), torch.cat([pred_obs,pred_acts,pred_next_obs], dim=1))
+            
+            self.optimiser.zero_grad()
             # Update model parameters
             regularizer_loss.backward() # BACKPROPAGATION
             print("loss: ", regularizer_loss)
             nn.utils.clip_grad_norm_(self.param_list, self.parms.grad_clip_norm, norm_type=2)
             self.optimiser.step()
 
-        print(pred.shape)
 
 
-    '''
-    def dump_plan(self): 
-        # Set models to eval mode
-        self.transition_model.eval()
-        self.observation_model.eval()
-        self.reward_model.eval()
-        self.encoder.eval()
-
-        with torch.no_grad():
-            #save_image(torch.as_tensor(observation), os.path.join(self.results_dir, 'intial_obs.png'))
-            done = False
-            observation, video_frames, reward = self.env.reset(),[], 0
-            belief, posterior_state, action = torch.zeros(1, self.parms.belief_size, device=self.parms.device), torch.zeros(1, self.parms.state_size, device=self.parms.device), torch.zeros(1, self.env.action_size, device=self.parms.device)
-            tqdm.write("Dumping plan")
-            observation = observation.to(device=self.parms.device)
-
-            ##### add reward to the encoded obs
-            encoded_obs = self.encoder(observation).unsqueeze(dim=0)
-            rew_as_obs = torch.tensor([reward]).type(torch.float).unsqueeze(dim=0)
-            rew_as_obs = rew_as_obs.unsqueeze(dim=-1).cuda()
-            enc_obs_with_rew = torch.cat([encoded_obs, rew_as_obs], dim=2)
-            #####
-
-            belief, _, _, _, posterior_state, _, _ = self.transition_model(posterior_state, action.unsqueeze(dim=0), belief, enc_obs_with_rew)  
-
-            belief, posterior_state = belief.squeeze(dim=0), posterior_state.squeeze(dim=0)  # Remove time dimension from belief/state
-            
-            next_action, beliefs, states, plan = self.planner(belief, posterior_state)  # Get action from planner(q(s_t|o≤t,a<t), p)      
-            
-            predicted_frames = self.observation_model(beliefs, states).cpu()
-
-            for i in range(self.parms.planning_horizon):
-                plan[i].clamp_(min=self.env.action_range[0], max=self.env.action_range[1])  # Clip action range
-                next_observation, reward, done = self.env.step(plan[i].cpu())  
-                next_observation = next_observation.squeeze(dim=0)
-                video_frames.append(make_grid(torch.cat([next_observation, predicted_frames[i]], dim=1) + 0.5, nrow=2).numpy())  # Decentre
-                #save_image(torch.as_tensor(next_observation), os.path.join(self.results_dir, 'original_obs%d.png' % i))
-                #save_image(torch.as_tensor(predicted_frames[i]), os.path.join(self.results_dir, 'prediction_obs%d.png' % i))
-
-
-            write_video(video_frames, 'dump_plan', self.video_path)  # Lossy compression
-        
-        self.transition_model.train()
-        self.observation_model.train()
-        self.reward_model.train()
-        self.encoder.train()
-    '''

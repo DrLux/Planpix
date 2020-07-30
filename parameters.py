@@ -2,14 +2,14 @@
 class Parameters():
     def __init__(self):
         # Parametri che cambio più frequentemente
-        self.gpu_id = 0
-        self.seed = 0#123
-        self.num_init_episodes = 3
+        self.gpu_id = 1
+        self.seed = 1#123
+        self.num_init_episodes = 10
         #self.collect_interval = 10 
 
 
         ### ENV ####
-        self.env_name = 'walker-walk'#'cheetah-run'
+        self.env_name = 'cheetah-run'
         self.max_episode_length = 1000
         self.bit_depth = 5
         
@@ -35,10 +35,9 @@ class Parameters():
         self.top_candidates = 100
 
         # Regularizer
-        self.reg_batch_size = 64
-        self.reg_chunck_len = 50
+        self.reg_batch_size = 40
+        self.reg_chunck_len = 1#50
         self.reg_hidden_size = 200
-        self.reg_num_hidden_layers = 3
         self.noise_std = 0.3
 
         # Learning
@@ -47,7 +46,7 @@ class Parameters():
         self.learning_rate = 1e-3
         self.adam_epsilon = 1e-4
         self.device = None
-        self.use_cuda = True
+        self.use_cuda = False
         #self.gpu_id = 0
         self.batch_size = 50
         
@@ -57,7 +56,7 @@ class Parameters():
         self.test_episodes = 3
         self.flag_render = False
         self.max_episode_length = 1000
-        self.training_episodes = 502
+        self.training_episodes = 802
         self.collect_interval = 100 #numero di campioni che peschi dal buffer ad ogni iterazione 
         self.chunk_size = 50
         self.grad_clip_norm = 1000

@@ -6,13 +6,14 @@ from torch import jit
 class MPCPlanner(jit.ScriptModule):
     __constants__ = ['action_size', 'planning_horizon', 'optimisation_iters', 'candidates', 'top_candidates', 'min_action', 'max_action']
 
-    def __init__(self, action_size, planning_horizon, optimisation_iters, candidates, top_candidates, transition_model, reward_model, min_action=-inf, max_action=inf):
+    def __init__(self, action_size, planning_horizon, optimisation_iters, candidates, top_candidates, transition_model, reward_model, regularizer, min_action=-inf, max_action=inf, exploitation=True):
         super().__init__()
         self.transition_model, self.reward_model = transition_model, reward_model
         self.action_size, self.min_action, self.max_action = action_size, min_action, max_action
         self.planning_horizon = planning_horizon
         self.optimisation_iters = optimisation_iters
         self.candidates, self.top_candidates = candidates, top_candidates
+        self.regularizer = regularizer 
 
     @jit.script_method
     def forward(self, belief, state):
