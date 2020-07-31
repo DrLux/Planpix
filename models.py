@@ -15,90 +15,50 @@ def bottle(f, x_tuple):
 class Regularizer(jit.ScriptModule):
 
     #DAE with (obs, act, next obs) as the data
-    def __init__(self, embedding_size,action_size, noise_std, activation_function='relu'):
+    def __init__(self,obs_size, act_size, hidden_size, planning_horizon, num_hidden_layers,encoder,observation_model,device,act_fn='relu'):
         super().__init__()
-        self.noise_std = noise_std
-        self.act_fn = getattr(F, activation_function)
-        self.action_size = action_size
-        self.emb_action_size = 2
-        self.emb_obs_size = 1024
-        self.concatenated_size = self.emb_obs_size + self.emb_obs_size + self.emb_action_size
+        self.devide = device
+        self.obs_size = obs_size
+        self.input_size = (obs_size + act_size)*planning_horizon 
+        self.linear_input_layer = nn.Linear(self.input_size, hidden_size) #input is the concatanation of obs,act,next_obs
+        self.linear_hidden_layer = nn.Linear(hidden_size, hidden_size)
+        self.linear_output_layer =  nn.Linear(hidden_size, self.input_size)   
+        self.act_fn = getattr(F, act_fn)
+        self.num_hidden_layers = num_hidden_layers
+        self.observation_model = observation_model
+        self.encoder = encoder
+
+    @jit.script_method
+    def predict(self,input):
+        hidden = self.act_fn(self.linear_input_layer(input))
+        for _ in range(self.num_hidden_layers):
+            hidden = self.act_fn(self.linear_hidden_layer(hidden))
+        output = self.act_fn(self.linear_output_layer(hidden))
+        return output
+
+    @jit.script_method
+    def calculate_cost(self,actions,beliefs,states):
+        plan_horizon = 1#actions.shape[0]
+        population_size = actions.shape[1] # works as a batch size
+        future_obs = torch.empty(population_size, 0).cuda()#.to(device=self.device)#to(device=self.device) ###DA SISTEMAREEEEEE
+
+        # Collapse sequence into 1 single vector
+        actions = actions.view(population_size,-1)
+
+        for i in range(plan_horizon):
+            future_frame = self.observation_model(beliefs[i],states[i])
+            future_enc_obs = self.encoder(future_frame)
+            future_obs = torch.cat([future_obs,future_enc_obs], dim=1)
+
+        # Joins transition
+        chunk = torch.cat([future_obs,actions[0:plan_horizon]] , dim=1)
         
-        self.enc_obs_l1    = nn.Conv2d(3, 32, 4, stride=2) # conv layer (depth from 3 --> 32), 4x4 kernels
-        self.enc_obs_l2    = nn.Conv2d(32, 64, 4, stride=2)
-        self.enc_obs_l3    = nn.Conv2d(64, 128, 4, stride=2)
-        self.enc_obs_l4    = nn.Conv2d(128, 256, 4, stride=2)
-        
-        self.enc_act       = nn.Linear(self.action_size,self.emb_action_size)
-        
-        #self.hidden_layer_l1  = nn.Linear(self.concatenated_size,self.emb_obs_size)
-        #self.hidden_layer_l2  = nn.Linear(self.emb_obs_size,self.emb_obs_size)
-        #self.hidden_layer_l3  = nn.Linear(self.emb_obs_size,self.concatenated_size)
-        
-        self.dec_act       = nn.Linear(self.emb_action_size,self.action_size)
+        # Reconstruct chunck
+        pred = self.predict(chunk)
 
-        self.dec_obs_l4    = nn.ConvTranspose2d(256, 128, 4, stride=2)
-        self.dec_obs_l3    = nn.ConvTranspose2d(128, 64, 4, stride=2)
-        self.dec_obs_l2    = nn.ConvTranspose2d(64, 32, 5, stride=2)
-        self.dec_obs_l1    = nn.ConvTranspose2d(32, 3, 4, stride=2)
-
-    #@jit.script_method
-    #obs = obs.view(obs.shape[0], -1)
-    def predict(self,obs,acts,next_obs):
-        batch_size = obs.shape[0]
-
-        #Encode obs
-        input_obs = self.act_fn(self.enc_obs_l1(obs))
-        input_obs = self.act_fn(self.enc_obs_l2(input_obs))
-        input_obs = self.act_fn(self.enc_obs_l3(input_obs))
-        input_obs = self.act_fn(self.enc_obs_l4(input_obs))
-        obs_shape = input_obs.shape
-        input_obs = input_obs.view(batch_size, -1)
-        
-        #Encode next_obs
-        input_next_obs = self.act_fn(self.enc_obs_l1(next_obs))
-        input_next_obs = self.act_fn(self.enc_obs_l2(input_next_obs))
-        input_next_obs = self.act_fn(self.enc_obs_l3(input_next_obs))
-        input_next_obs = self.act_fn(self.enc_obs_l4(input_next_obs))
-        input_next_obs = input_next_obs.view(batch_size, -1)
-
-        #Encode Action
-        input_act = self.act_fn(self.enc_act(acts))
-
-        
-        # Join encoded obs,next_obs,action
-        concatenated_embedded = torch.cat([input_obs,input_next_obs,input_act], dim=1)
-
-        hidden = concatenated_embedded
-
-        #hidden = self.act_fn(self.hidden_layer_l1(concatenated_embedded))
-        #hidden = self.act_fn(self.hidden_layer_l3(hidden))
-        
-        # split encoded obs,next_obs,action
-        splitted_hidden  = torch.split(hidden, self.emb_obs_size, dim=1)
-        
-        hidden_obs       = splitted_hidden[0]  
-        hidden_next_obs  = splitted_hidden[1]
-        hidden_act       = splitted_hidden[2]
-
-        # Decode hidden_obs
-        hidden_obs = hidden_obs.view(obs_shape)
-        output_obs = self.act_fn(self.dec_obs_l4(hidden_obs))
-        output_obs = self.act_fn(self.dec_obs_l3(output_obs))
-        output_obs = self.act_fn(self.dec_obs_l2(output_obs))
-        output_obs = self.act_fn(self.dec_obs_l1(output_obs))
-
-        # Decode hidden_next_obs
-        hidden_next_obs = hidden_next_obs.view(obs_shape)
-        output_next_obs = self.act_fn(self.dec_obs_l4(hidden_next_obs))
-        output_next_obs = self.act_fn(self.dec_obs_l3(output_next_obs))
-        output_next_obs = self.act_fn(self.dec_obs_l2(output_next_obs))
-        output_next_obs = self.act_fn(self.dec_obs_l1(output_next_obs))
-
-        # Decode actions
-        output_act = self.act_fn(self.dec_act(hidden_act))
-        
-        return output_obs,output_act,output_next_obs
+        # Calculate divergence
+        error = (pred - chunk).pow(2).mean(dim=1) #from shape[1000,12360] to shape[1000,1]
+        return error
 
 
 class TransitionModel(jit.ScriptModule):

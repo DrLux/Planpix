@@ -5,7 +5,7 @@ class Parameters():
         self.gpu_id = 1
         self.seed = 1#123
         self.num_init_episodes = 10
-        #self.collect_interval = 10 
+        self.collect_interval = 100
 
 
         ### ENV ####
@@ -35,10 +35,11 @@ class Parameters():
         self.top_candidates = 100
 
         # Regularizer
-        self.reg_batch_size = 40
-        self.reg_chunck_len = 1#50
-        self.reg_hidden_size = 200
-        self.noise_std = 0.3
+        self.reg_batch_size = 80
+        self.reg_chunck_len = self.planning_horizon
+        self.reg_hidden_size = 500
+        self.noise_std = 0.5
+        self.reg_num_hidden_layers = 5
 
         # Learning
         self.activation_function = 'relu'
@@ -46,7 +47,7 @@ class Parameters():
         self.learning_rate = 1e-3
         self.adam_epsilon = 1e-4
         self.device = None
-        self.use_cuda = False
+        self.use_cuda = True
         #self.gpu_id = 0
         self.batch_size = 50
         
@@ -57,7 +58,7 @@ class Parameters():
         self.flag_render = False
         self.max_episode_length = 1000
         self.training_episodes = 802
-        self.collect_interval = 100 #numero di campioni che peschi dal buffer ad ogni iterazione 
+        #self.collect_interval = 10#0 #numero di campioni che peschi dal buffer ad ogni iterazione 
         self.chunk_size = 50
         self.grad_clip_norm = 1000
         self.test_interval = 20

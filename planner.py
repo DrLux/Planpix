@@ -34,6 +34,11 @@ class MPCPlanner(jit.ScriptModule):
             beliefs, states, _, _ = self.transition_model(state, actions, belief)
             # Calculate expected returns (technically sum of rewards over planning horizon)
             returns = self.reward_model(beliefs.view(-1, H), states.view(-1, Z)).view(self.planning_horizon, -1).sum(dim=0)
+
+            reg_cost = self.regularizer.calculate_cost(actions,beliefs,states) 
+            
+            returns = returns + reg_cost
+
             # Re-fit belief to the K best action sequences
             _, topk = returns.reshape(B, self.candidates).topk(self.top_candidates, dim=1, largest=True, sorted=False) # topk = 100 indexes
             topk += self.candidates * torch.arange(0, B, dtype=torch.int64, device=topk.device).unsqueeze(dim=1)  # Fix indices for unrolled actions

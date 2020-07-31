@@ -31,7 +31,7 @@ class Trainer():
         self.observation_model = ObservationModel(self.parms.belief_size, self.parms.state_size, self.parms.embedding_size, self.parms.activation_function).to(device=self.parms.device)
         self.reward_model = RewardModel(self.parms.belief_size, self.parms.state_size, self.parms.hidden_size, self.parms.activation_function).to(device=self.parms.device)
         self.encoder = Encoder(self.parms.embedding_size,self.parms.activation_function).to(device=self.parms.device)
-        self.regularizer = Regularizer(self.parms.reg_hidden_size,self.env.action_size, self.parms.noise_std).to(device=self.parms.device)
+        self.regularizer = Regularizer(self.parms.embedding_size, self.env.action_size, self.parms.reg_hidden_size, self.parms.planning_horizon, self.parms.reg_num_hidden_layers, self.encoder, self.observation_model,self.parms.device).to(device=self.parms.device)
         self.param_list = list(self.transition_model.parameters()) + list(self.observation_model.parameters()) + list(self.reward_model.parameters()) + list(self.encoder.parameters()) + list(self.regularizer.parameters())
         self.optimiser = optim.Adam(self.param_list, lr=0 if self.parms.learning_rate_schedule != 0 else self.parms.learning_rate, eps=self.parms.adam_epsilon)
         self.planner = MPCPlanner(self.env.action_size, self.parms.planning_horizon, self.parms.optimisation_iters, self.parms.candidates, self.parms.top_candidates, self.transition_model, self.reward_model, self.regularizer, self.env.action_range[0], self.env.action_range[1])
@@ -63,7 +63,7 @@ class Trainer():
         ##### add reward to the encoded obs
         encoded_obs = self.encoder(observation).unsqueeze(dim=0)
         rew_as_obs = torch.tensor(reward).type(torch.float).unsqueeze(dim=0)
-        rew_as_obs = rew_as_obs.unsqueeze(dim=-1).cuda()
+        rew_as_obs = rew_as_obs.unsqueeze(dim=-1).to(device=self.parms.device)
         enc_obs_with_rew = torch.cat([encoded_obs, rew_as_obs], dim=2)
         #####
 
@@ -97,7 +97,7 @@ class Trainer():
             init_belief, init_state = torch.zeros(self.parms.batch_size, self.parms.belief_size, device=self.parms.device), torch.zeros(self.parms.batch_size, self.parms.state_size, device=self.parms.device)
             
             # Get data for the regularizer model
-            ####obs,acts,next_obs,_,_ = self.D.get_trajectories(self.parms.reg_batch_size, self.parms.reg_chunck_len)
+            obs,acts,_,_,_ = self.D.get_trajectories(self.parms.reg_batch_size, self.parms.reg_chunck_len)
 
             # PREPARE DATA
             
@@ -107,12 +107,16 @@ class Trainer():
             ####
 
             # data for the regularizer model
-            ####encoded_obs = bottle(self.encoder, (obs,))
-            ####encoded_next_obs = bottle(self.encoder, (next_obs,))
-            ####chunk = torch.cat([encoded_obs,acts,encoded_next_obs] , dim=2)
+            encoded_obs = bottle(self.encoder, (obs,))
+
+            # Collapse sequence into 1 single vector
+            encoded_obs = encoded_obs.view(self.parms.reg_batch_size,-1)
+            acts = acts.view(self.parms.reg_batch_size,-1)
+
+            chunk = torch.cat([encoded_obs,acts] , dim=1)
 
             # add noise to data (denoising autoencoder)
-            ####noisy_inputs = chunk + torch.randn_like(chunk) * self.parms.noise_std
+            noisy_inputs = chunk + torch.randn_like(chunk) * self.parms.noise_std
 
             # MAKE PREDICTION
 
@@ -123,18 +127,20 @@ class Trainer():
             # Calculate observation likelihood, reward likelihood and KL losses (for t = 0 only for latent overshooting); sum over final dims, average over batch and time (original implementation, though paper seems to miss 1/T scaling?)
             
             # LOSS
-            ####regularizer_loss = F.mse_loss(self.regularizer.predict(chunk), chunk)
+            regularizer_loss = F.mse_loss(self.regularizer.predict(chunk), chunk)
             observation_loss = F.mse_loss(bottle(self.observation_model, (beliefs, posterior_states)), observations[1:], reduction='none').sum((2, 3, 4)).mean(dim=(0, 1))
             reward_loss = F.mse_loss(bottle(self.reward_model, (beliefs, posterior_states)), rewards[:-1], reduction='none').mean(dim=(0, 1))
             kl_loss = torch.max(kl_divergence(Normal(posterior_means, posterior_std_devs), Normal(prior_means, prior_std_devs)).sum(dim=2), self.free_nats).mean(dim=(0, 1))  
 
+            #print("regularizer_loss: ", regularizer_loss)
+
             # Update model parameters
             self.optimiser.zero_grad()
-            (observation_loss + reward_loss + kl_loss).backward() # BACKPROPAGATION
+            (regularizer_loss + observation_loss + reward_loss + kl_loss).backward() # BACKPROPAGATION
             nn.utils.clip_grad_norm_(self.param_list, self.parms.grad_clip_norm, norm_type=2)
             self.optimiser.step()
             # Store (0) observation loss (1) reward loss (2) KL loss
-            losses.append([observation_loss.item(), reward_loss.item(), kl_loss.item()])
+            losses.append([observation_loss.item(), reward_loss.item(), kl_loss.item(), regularizer_loss.item()])
             #self.metrics['regularizer_loss'].append(regularizer_loss.item() )
             #self.metrics['observation_loss'].append(observation_loss.item() )
             #self.metrics['reward_loss'].append(reward_loss.item() ) 
@@ -142,11 +148,11 @@ class Trainer():
 
         #save statistics and plot them
         losses = tuple(zip(*losses))  #PROVA A RIFARLO SENZA LOSSES
-        #self.metrics['regularizer_loss'].append(losses[0])
         self.metrics['observation_loss'].append(losses[0])
         self.metrics['reward_loss'].append(losses[1])
         self.metrics['kl_loss'].append(losses[2])
-        #lineplot(self.metrics['episodes'][-len(self.metrics['regularizer_loss']):], self.metrics['regularizer_loss'], 'regularizer_loss', self.results_dir)
+        self.metrics['regularizer_loss'].append(losses[3])
+        lineplot(self.metrics['episodes'][-len(self.metrics['regularizer_loss']):], self.metrics['regularizer_loss'], 'regularizer_loss', self.results_dir)
         lineplot(self.metrics['episodes'][-len(self.metrics['observation_loss']):], self.metrics['observation_loss'], 'observation_loss', self.results_dir)
         lineplot(self.metrics['episodes'][-len(self.metrics['reward_loss']):], self.metrics['reward_loss'], 'reward_loss', self.results_dir)
         lineplot(self.metrics['episodes'][-len(self.metrics['kl_loss']):], self.metrics['kl_loss'], 'kl_loss', self.results_dir)
@@ -305,25 +311,24 @@ class Trainer():
     def train_regularizer(self):
         for i in range (1000):
             # Prepare data
-            obs,acts,next_obs,_,_ = self.D.get_trajectories(self.parms.reg_batch_size, self.parms.reg_chunck_len)
-            obs = obs.squeeze(dim=0)
-            acts = acts.squeeze(dim=0)
-            next_obs = next_obs.squeeze(dim=0)
-
-
-            #encoded_obs = bottle(self.encoder, (obs,))
-            #encoded_next_obs = bottle(self.encoder, (next_obs,))
+            obs,acts,_,_,_ = self.D.get_trajectories(self.parms.reg_batch_size, self.parms.reg_chunck_len)
             
-            # Make prediction and calculate loss
-            pred_obs,pred_acts,pred_next_obs = self.regularizer.predict(obs,acts,next_obs)
-
-            obs = obs.view(obs.shape[0], -1)
-            pred_obs = pred_obs.view(pred_obs.shape[0], -1)
-            next_obs = next_obs.view(next_obs.shape[0], -1)
-            pred_next_obs = pred_next_obs.view(pred_next_obs.shape[0], -1)
-
-            regularizer_loss = F.mse_loss(torch.cat([obs,acts,next_obs], dim=1), torch.cat([pred_obs,pred_acts,pred_next_obs], dim=1))
+            # Encode obs
+            encoded_obs = bottle(self.encoder, (obs,))
             
+            # Collapse sequence into 1 single vector
+            encoded_obs = encoded_obs.view(self.parms.reg_batch_size,-1)
+            acts = acts.view(self.parms.reg_batch_size,-1)
+            
+            # Joins transition
+            chunk = torch.cat([encoded_obs,acts] , dim=1)
+            # add noise to data (denoising autoencoder)
+            noisy_inputs = chunk + torch.randn_like(chunk) * self.parms.noise_std
+
+            pred = self.regularizer.predict(chunk)
+            self.optimiser.zero_grad()
+            regularizer_loss = F.mse_loss(pred, chunk)
+
             self.optimiser.zero_grad()
             # Update model parameters
             regularizer_loss.backward() # BACKPROPAGATION

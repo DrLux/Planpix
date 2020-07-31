@@ -13,7 +13,7 @@ class Initializer():
   def __init__(self):  
       self.parms = Parameters()
       self.results_dir = os.path.join(self.parms.results_path)
-      self.metrics = {'steps': [], 'episodes': [], 'train_rewards': [], 'test_episodes': [], 'test_rewards': [], 'observation_loss': [], 'reward_loss': [], 'kl_loss': []}
+      self.metrics = {'steps': [], 'episodes': [], 'train_rewards': [], 'test_episodes': [], 'test_rewards': [], 'observation_loss': [], 'reward_loss': [], 'kl_loss': [], 'regularizer_loss': []}
       
 
       os.makedirs(self.results_dir, exist_ok=True) 
@@ -48,7 +48,7 @@ class Initializer():
       # Load checkpoints
       #self.trainer.load_checkpoints()
       print("Total training episodes: ", self.parms.training_episodes, " Buffer sampling: ", self.parms.collect_interval)
-      #self.trainer.train_models()
+      self.trainer.train_models()
       #self.trainer.test_model()
       #self.trainer.dump_plan_video()
 
