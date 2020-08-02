@@ -38,12 +38,12 @@ class Regularizer(jit.ScriptModule):
 
     @jit.script_method
     def calculate_cost(self,actions,beliefs,states):
-        plan_horizon = 1#actions.shape[0]
+        plan_horizon = actions.shape[0]
         population_size = actions.shape[1] # works as a batch size
         future_obs = torch.empty(population_size, 0).cuda()#.to(device=self.device)#to(device=self.device) ###DA SISTEMAREEEEEE
 
         # Collapse sequence into 1 single vector
-        actions = actions.view(population_size,-1)
+        actions = actions[0:plan_horizon].view(population_size,-1)
 
         for i in range(plan_horizon):
             future_frame = self.observation_model(beliefs[i],states[i])
@@ -51,7 +51,7 @@ class Regularizer(jit.ScriptModule):
             future_obs = torch.cat([future_obs,future_enc_obs], dim=1)
 
         # Joins transition
-        chunk = torch.cat([future_obs,actions[0:plan_horizon]] , dim=1)
+        chunk = torch.cat([future_obs,actions] , dim=1)
         
         # Reconstruct chunck
         pred = self.predict(chunk)

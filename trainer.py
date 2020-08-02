@@ -127,7 +127,7 @@ class Trainer():
             # Calculate observation likelihood, reward likelihood and KL losses (for t = 0 only for latent overshooting); sum over final dims, average over batch and time (original implementation, though paper seems to miss 1/T scaling?)
             
             # LOSS
-            regularizer_loss = F.mse_loss(self.regularizer.predict(chunk), chunk)
+            regularizer_loss = F.mse_loss(self.regularizer.predict(noisy_inputs), chunk)
             observation_loss = F.mse_loss(bottle(self.observation_model, (beliefs, posterior_states)), observations[1:], reduction='none').sum((2, 3, 4)).mean(dim=(0, 1))
             reward_loss = F.mse_loss(bottle(self.reward_model, (beliefs, posterior_states)), rewards[:-1], reduction='none').mean(dim=(0, 1))
             kl_loss = torch.max(kl_divergence(Normal(posterior_means, posterior_std_devs), Normal(prior_means, prior_std_devs)).sum(dim=2), self.free_nats).mean(dim=(0, 1))  
@@ -325,7 +325,7 @@ class Trainer():
             # add noise to data (denoising autoencoder)
             noisy_inputs = chunk + torch.randn_like(chunk) * self.parms.noise_std
 
-            pred = self.regularizer.predict(chunk)
+            pred = self.regularizer.predict(noisy_inputs)
             self.optimiser.zero_grad()
             regularizer_loss = F.mse_loss(pred, chunk)
 

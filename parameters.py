@@ -2,7 +2,7 @@
 class Parameters():
     def __init__(self):
         # Parametri che cambio più frequentemente
-        self.gpu_id = 1
+        self.gpu_id = 0
         self.seed = 1#123
         self.num_init_episodes = 10
         self.collect_interval = 100
