@@ -97,7 +97,7 @@ class Trainer():
             init_belief, init_state = torch.zeros(self.parms.batch_size, self.parms.belief_size, device=self.parms.device), torch.zeros(self.parms.batch_size, self.parms.state_size, device=self.parms.device)
             
             # Get data for the regularizer model
-            obs,acts,_,_,_ = self.D.get_trajectories(self.parms.reg_batch_size, self.parms.reg_chunck_len)
+            reg_obs,acts,_,_,_ = self.D.get_trajectories(self.parms.reg_batch_size, self.parms.reg_chunck_len)
 
             # PREPARE DATA
             
@@ -107,13 +107,13 @@ class Trainer():
             ####
 
             # data for the regularizer model
-            encoded_obs = bottle(self.encoder, (obs,))
+            encoded_reg_obs = bottle(self.encoder, (reg_obs,))
 
             # Collapse sequence into 1 single vector
-            encoded_obs = encoded_obs.view(self.parms.reg_batch_size,-1)
+            encoded_reg_obs = encoded_reg_obs.view(self.parms.reg_batch_size,-1)
             acts = acts.view(self.parms.reg_batch_size,-1)
 
-            chunk = torch.cat([encoded_obs,acts] , dim=1)
+            chunk = torch.cat([encoded_reg_obs,acts] , dim=1)
 
             # add noise to data (denoising autoencoder)
             noisy_inputs = chunk + torch.randn_like(chunk) * self.parms.noise_std
@@ -335,6 +335,7 @@ class Trainer():
             print("loss: ", regularizer_loss)
             nn.utils.clip_grad_norm_(self.param_list, self.parms.grad_clip_norm, norm_type=2)
             self.optimiser.step()
+
 
 
 
