@@ -7,7 +7,7 @@ import random
 from torch.distributions import Normal
 from torch.nn import functional as F
 from torch.distributions.kl import kl_divergence
-from utils import lineplot, write_video
+from utils import lineplot, write_video, double_lineplot
 from torchvision.utils import make_grid, save_image
 import torch
 import os
@@ -31,10 +31,12 @@ class Trainer():
         self.observation_model = ObservationModel(self.parms.belief_size, self.parms.state_size, self.parms.embedding_size, self.parms.activation_function).to(device=self.parms.device)
         self.reward_model = RewardModel(self.parms.belief_size, self.parms.state_size, self.parms.hidden_size, self.parms.activation_function).to(device=self.parms.device)
         self.encoder = Encoder(self.parms.embedding_size,self.parms.activation_function).to(device=self.parms.device)
-        self.regularizer = Regularizer(self.parms.embedding_size, self.env.action_size, self.parms.reg_hidden_size, self.parms.planning_horizon, self.parms.reg_num_hidden_layers, self.encoder, self.observation_model,self.parms.device).to(device=self.parms.device)
-        self.param_list = list(self.transition_model.parameters()) + list(self.observation_model.parameters()) + list(self.reward_model.parameters()) + list(self.encoder.parameters()) + list(self.regularizer.parameters())
+        #self.regularizer = Regularizer(self.parms.embedding_size, self.env.action_size, self.parms.reg_hidden_size, self.parms.reg_chunck_len, self.parms.reg_num_hidden_layers, self.encoder, self.observation_model,self.parms.device).to(device=self.parms.device)
+        #self.param_list = list(self.transition_model.parameters()) + list(self.observation_model.parameters()) + list(self.reward_model.parameters()) + list(self.encoder.parameters()) + list(self.regularizer.parameters())
+        self.param_list = list(self.transition_model.parameters()) + list(self.observation_model.parameters()) + list(self.reward_model.parameters()) + list(self.encoder.parameters())
         self.optimiser = optim.Adam(self.param_list, lr=0 if self.parms.learning_rate_schedule != 0 else self.parms.learning_rate, eps=self.parms.adam_epsilon)
-        self.planner = MPCPlanner(self.env.action_size, self.parms.planning_horizon, self.parms.optimisation_iters, self.parms.candidates, self.parms.top_candidates, self.transition_model, self.reward_model, self.regularizer, self.env.action_range[0], self.env.action_range[1])
+        #self.planner = MPCPlanner(self.env.action_size, self.parms.planning_horizon, self.parms.optimisation_iters, self.parms.candidates, self.parms.top_candidates, self.transition_model, self.reward_model, self.regularizer, self.env.action_range[0], self.env.action_range[1])
+        self.planner = MPCPlanner(self.env.action_size, self.parms.planning_horizon, self.parms.optimisation_iters, self.parms.candidates, self.parms.top_candidates, self.transition_model, self.reward_model, self.env.action_range[0], self.env.action_range[1])
 
         global_prior = Normal(torch.zeros(self.parms.batch_size, self.parms.state_size, device=self.parms.device), torch.ones(self.parms.batch_size, self.parms.state_size, device=self.parms.device))  # Global prior N(0, I)
         self.free_nats = torch.full((1, ), self.parms.free_nats, dtype=torch.float32, device=self.parms.device)  # Allowed deviation in KL divergence
@@ -70,13 +72,13 @@ class Trainer():
 
         belief, _, _, _, posterior_state, _, _ = self.transition_model(posterior_state, action.unsqueeze(dim=0), belief, enc_obs_with_rew)  # Action and observation need extra time dimension
         belief, posterior_state = belief.squeeze(dim=0), posterior_state.squeeze(dim=0)  # Remove time dimension from belief/state
-        action,_,_,_ = self.planner(belief, posterior_state)  # Get action from planner(q(s_t|o≤t,a<t), p)      
+        action,_,_,_,pred_next_rew = self.planner(belief, posterior_state)  # Get action from planner(q(s_t|o≤t,a<t), p)      
         if explore:
             action = action + self.parms.action_noise * torch.randn_like(action)  # Add exploration noise ε ~ p(ε) to the action
         action.clamp_(min=min_action, max=max_action)  # Clip action range
         next_observation, reward, done = env.step(action.cpu() if isinstance(env, EnvBatcher) else action[0].cpu())  # If single env is istanceted perform single action (get item from list), else perform all actions
         
-        return belief, posterior_state, action, next_observation, reward, done
+        return belief, posterior_state, action, next_observation, reward, done, pred_next_rew
     
     def fit_buffer(self,episode):
         ####
@@ -97,7 +99,7 @@ class Trainer():
             init_belief, init_state = torch.zeros(self.parms.batch_size, self.parms.belief_size, device=self.parms.device), torch.zeros(self.parms.batch_size, self.parms.state_size, device=self.parms.device)
             
             # Get data for the regularizer model
-            reg_obs,acts,_,_,_ = self.D.get_trajectories(self.parms.reg_batch_size, self.parms.reg_chunck_len)
+            #reg_obs,acts,_,_,_ = self.D.get_trajectories(self.parms.reg_batch_size, self.parms.reg_chunck_len)
 
             # PREPARE DATA
             
@@ -107,16 +109,16 @@ class Trainer():
             ####
 
             # data for the regularizer model
-            encoded_reg_obs = bottle(self.encoder, (reg_obs,))
+            #encoded_reg_obs = bottle(self.encoder, (reg_obs,))
 
             # Collapse sequence into 1 single vector
-            encoded_reg_obs = encoded_reg_obs.view(self.parms.reg_batch_size,-1)
-            acts = acts.view(self.parms.reg_batch_size,-1)
+            #encoded_reg_obs = encoded_reg_obs.view(self.parms.reg_batch_size,-1)
+            #acts = acts.view(self.parms.reg_batch_size,-1)
 
-            chunk = torch.cat([encoded_reg_obs,acts] , dim=1)
+            #chunk = torch.cat([encoded_reg_obs,acts] , dim=1)
 
             # add noise to data (denoising autoencoder)
-            noisy_inputs = chunk + torch.randn_like(chunk) * self.parms.noise_std
+            #noisy_inputs = chunk + torch.randn_like(chunk) * self.parms.noise_std
 
             # MAKE PREDICTION
 
@@ -125,9 +127,16 @@ class Trainer():
             #beliefs, prior_states, prior_means, prior_std_devs, posterior_states, posterior_means, posterior_std_devs = self.transition_model(init_state, actions[:-1], init_belief, bottle(self.encoder, (observations[1:], )), nonterminals[:-1])
             beliefs, prior_states, prior_means, prior_std_devs, posterior_states, posterior_means, posterior_std_devs = self.transition_model(init_state, actions[:-1], init_belief, enc_obs_with_rew, nonterminals[:-1])
             # Calculate observation likelihood, reward likelihood and KL losses (for t = 0 only for latent overshooting); sum over final dims, average over batch and time (original implementation, though paper seems to miss 1/T scaling?)
-            
+            #pred = self.regularizer.predict(noisy_inputs)
+
             # LOSS
-            regularizer_loss = F.mse_loss(self.regularizer.predict(noisy_inputs), chunk)
+            # Trajectory Loss
+            #predicted_obs,predicted_act = torch.split(pred,self.parms.embedding_size,dim=1)
+            #obs_loss = F.mse_loss(predicted_obs, encoded_reg_obs)
+            #act_loss = F.mse_loss(predicted_act, acts)
+            #regularizer_loss = obs_loss + act_loss
+
+            # Transition model loss
             observation_loss = F.mse_loss(bottle(self.observation_model, (beliefs, posterior_states)), observations[1:], reduction='none').sum((2, 3, 4)).mean(dim=(0, 1))
             reward_loss = F.mse_loss(bottle(self.reward_model, (beliefs, posterior_states)), rewards[:-1], reduction='none').mean(dim=(0, 1))
             kl_loss = torch.max(kl_divergence(Normal(posterior_means, posterior_std_devs), Normal(prior_means, prior_std_devs)).sum(dim=2), self.free_nats).mean(dim=(0, 1))  
@@ -136,11 +145,13 @@ class Trainer():
 
             # Update model parameters
             self.optimiser.zero_grad()
-            (regularizer_loss + observation_loss + reward_loss + kl_loss).backward() # BACKPROPAGATION
+            #(regularizer_loss + observation_loss + reward_loss + kl_loss).backward() # BACKPROPAGATION
+            (observation_loss + reward_loss + kl_loss).backward() # BACKPROPAGATION
             nn.utils.clip_grad_norm_(self.param_list, self.parms.grad_clip_norm, norm_type=2)
             self.optimiser.step()
             # Store (0) observation loss (1) reward loss (2) KL loss
-            losses.append([observation_loss.item(), reward_loss.item(), kl_loss.item(), regularizer_loss.item()])
+            losses.append([observation_loss.item(), reward_loss.item(), kl_loss.item()])
+            #losses.append([observation_loss.item(), reward_loss.item(), kl_loss.item(), regularizer_loss.item()])
             #self.metrics['regularizer_loss'].append(regularizer_loss.item() )
             #self.metrics['observation_loss'].append(observation_loss.item() )
             #self.metrics['reward_loss'].append(reward_loss.item() ) 
@@ -151,8 +162,8 @@ class Trainer():
         self.metrics['observation_loss'].append(losses[0])
         self.metrics['reward_loss'].append(losses[1])
         self.metrics['kl_loss'].append(losses[2])
-        self.metrics['regularizer_loss'].append(losses[3])
-        lineplot(self.metrics['episodes'][-len(self.metrics['regularizer_loss']):], self.metrics['regularizer_loss'], 'regularizer_loss', self.results_dir)
+        #self.metrics['regularizer_loss'].append(losses[3])
+        #lineplot(self.metrics['episodes'][-len(self.metrics['regularizer_loss']):], self.metrics['regularizer_loss'], 'regularizer_loss', self.results_dir)
         lineplot(self.metrics['episodes'][-len(self.metrics['observation_loss']):], self.metrics['observation_loss'], 'observation_loss', self.results_dir)
         lineplot(self.metrics['episodes'][-len(self.metrics['reward_loss']):], self.metrics['reward_loss'], 'reward_loss', self.results_dir)
         lineplot(self.metrics['episodes'][-len(self.metrics['kl_loss']):], self.metrics['kl_loss'], 'kl_loss', self.results_dir)
@@ -169,7 +180,7 @@ class Trainer():
             for t in tqdm(range(self.parms.max_episode_length // self.env.action_repeat)):
                 # QUI INVECE ESPLORI
 
-                belief, posterior_state, action, next_observation, reward, done = self.update_belief_and_act(self.env, belief, posterior_state, action, observation.to(device=self.parms.device), [reward], self.env.action_range[0], self.env.action_range[1], explore=True)
+                belief, posterior_state, action, next_observation, reward, done, _ = self.update_belief_and_act(self.env, belief, posterior_state, action, observation.to(device=self.parms.device), [reward], self.env.action_range[0], self.env.action_range[1], explore=True)
                 self.D.append(observation, action.cpu(), reward, done)
                 total_reward += reward
                 observation = next_observation
@@ -211,13 +222,18 @@ class Trainer():
         # Initialise parallelised test environments
         test_envs = EnvBatcher(ControlSuiteEnv, (self.parms.env_name, self.parms.seed, self.parms.max_episode_length, self.parms.bit_depth), {}, self.parms.test_episodes)
         rewards = np.zeros(self.parms.test_episodes)
+        real_rew = []
+        predicted_rew = [] 
+        total_steps = self.parms.max_episode_length // test_envs.action_repeat
 
         with torch.no_grad():
             observation, total_rewards, video_frames = test_envs.reset(), np.zeros((self.parms.test_episodes, )), []
             belief, posterior_state, action = torch.zeros(self.parms.test_episodes, self.parms.belief_size, device=self.parms.device), torch.zeros(self.parms.test_episodes, self.parms.state_size, device=self.parms.device), torch.zeros(self.parms.test_episodes, self.env.action_size, device=self.parms.device)
             tqdm.write("Testing model.")
-            for t in range(self.parms.max_episode_length // test_envs.action_repeat): #floor division    
-                belief, posterior_state, action, next_observation, rewards, done = self.update_belief_and_act(test_envs,  belief, posterior_state, action, observation.to(device=self.parms.device), list(rewards), self.env.action_range[0], self.env.action_range[1])
+            for t in range(total_steps): #floor division    
+                belief, posterior_state, action, next_observation, rewards, done, pred_next_rew = self.update_belief_and_act(test_envs,  belief, posterior_state, action, observation.to(device=self.parms.device), list(rewards), self.env.action_range[0], self.env.action_range[1])
+                real_rew.append(rewards.item())
+                predicted_rew.append(pred_next_rew.cpu().item())
                 total_rewards += rewards.numpy()
                 # Collect real vs. predicted frames for video
                 #observation_model(belief, posterior_state).cpu() ->  torch.from_numpy(prova).float
@@ -231,6 +247,10 @@ class Trainer():
         self.tested_episodes += 1
         self.metrics['test_episodes'].append(episode)
         self.metrics['test_rewards'].append(total_rewards.tolist())
+
+        double_lineplot(np.arange(total_steps), real_rew, predicted_rew, "Real vs Predicted rewards", self.results_dir)
+        #lineplot(np.arange(total_steps), real_rew, 'real_rewards', self.results_dir)
+        #lineplot(np.arange(total_steps), predicted_rew, 'predicted_rewards', self.results_dir)
         lineplot(self.metrics['test_episodes'], self.metrics['test_rewards'], 'test_rewards', self.results_dir)
         
         write_video(video_frames, 'test_episode_%s' % str(episode), self.video_path)  # Lossy compression
@@ -261,7 +281,7 @@ class Trainer():
             belief, posterior_state, action = torch.zeros(1, self.parms.belief_size, device=self.parms.device), torch.zeros(1, self.parms.state_size, device=self.parms.device), torch.zeros(1, self.env.action_size, device=self.parms.device)
             tqdm.write("Executing episode.")
             for t in range(step_before_plan): #floor division    
-                belief, posterior_state, action, next_observation, reward, done = self.update_belief_and_act(self.env,  belief, posterior_state, action, observation.to(device=self.parms.device), [reward], self.env.action_range[0], self.env.action_range[1])
+                belief, posterior_state, action, next_observation, reward, done, _ = self.update_belief_and_act(self.env,  belief, posterior_state, action, observation.to(device=self.parms.device), [reward], self.env.action_range[0], self.env.action_range[1])
                 observation = next_observation
                 video_frames.append(make_grid(torch.cat([observation, self.observation_model(belief, posterior_state).cpu()], dim=3) + 0.5, nrow=5).numpy())  # Decentre
                 if done:
@@ -293,7 +313,7 @@ class Trainer():
 
         belief, _, _, _, posterior_state, _, _ = self.transition_model(posterior_state, action.unsqueeze(dim=0), belief, enc_obs_with_rew)  
         belief, posterior_state = belief.squeeze(dim=0), posterior_state.squeeze(dim=0)  # Remove time dimension from belief/state
-        next_action, beliefs, states, plan = self.planner(belief, posterior_state)  # Get action from planner(q(s_t|o≤t,a<t), p)      
+        next_action, beliefs, states, plan,_ = self.planner(belief, posterior_state)  # Get action from planner(q(s_t|o≤t,a<t), p)      
         predicted_frames = self.observation_model(beliefs, states).cpu()
 
         for i in range(self.parms.planning_horizon):
@@ -309,7 +329,7 @@ class Trainer():
     
     
     def train_regularizer(self):
-        for i in range (1000):
+        for i in range (self.parms.collect_interval):
             # Prepare data
             obs,acts,_,_,_ = self.D.get_trajectories(self.parms.reg_batch_size, self.parms.reg_chunck_len)
             
@@ -327,15 +347,28 @@ class Trainer():
 
             pred = self.regularizer.predict(noisy_inputs)
             self.optimiser.zero_grad()
-            regularizer_loss = F.mse_loss(pred, chunk)
+
+            predicted_obs,predicted_act = torch.split(pred,self.parms.embedding_size,dim=1)
+            
+            obs_loss = F.mse_loss(predicted_obs, encoded_obs)
+            act_loss = F.mse_loss(predicted_act, acts)
+            #if (not torch.all(torch.eq(predicted_act.sign(),acts.sign()))):
+            #    act_loss *= 3
+            regularizer_loss = obs_loss + act_loss
 
             self.optimiser.zero_grad()
             # Update model parameters
             regularizer_loss.backward() # BACKPROPAGATION
-            print("loss: ", regularizer_loss)
+            print("loss: ", regularizer_loss, " at iteration ", i)
+            print("obs_loss: ", obs_loss)
+            print("act_loss: ", act_loss)
             nn.utils.clip_grad_norm_(self.param_list, self.parms.grad_clip_norm, norm_type=2)
             self.optimiser.step()
 
+        #print("pred obs : ", predicted_obs.mean())
+        #print("obs : ", encoded_obs.mean())
 
-
-
+        print("##############ààààà")
+        print("pred acts : ", predicted_act.mean())
+        print("acts : ", acts.mean())
+        #assert 1 == 2

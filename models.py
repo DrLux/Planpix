@@ -17,9 +17,10 @@ class Regularizer(jit.ScriptModule):
     #DAE with (obs, act, next obs) as the data
     def __init__(self,obs_size, act_size, hidden_size, planning_horizon, num_hidden_layers,encoder,observation_model,device,act_fn='relu'):
         super().__init__()
+        self.sequence_len = planning_horizon
         self.devide = device
         self.obs_size = obs_size
-        self.input_size = (obs_size + act_size)*planning_horizon 
+        self.input_size = (obs_size + act_size)*self.sequence_len 
         self.linear_input_layer = nn.Linear(self.input_size, hidden_size) #input is the concatanation of obs,act,next_obs
         self.linear_hidden_layer = nn.Linear(hidden_size, hidden_size)
         self.linear_output_layer =  nn.Linear(hidden_size, self.input_size)   
@@ -33,19 +34,18 @@ class Regularizer(jit.ScriptModule):
         hidden = self.act_fn(self.linear_input_layer(input))
         for _ in range(self.num_hidden_layers):
             hidden = self.act_fn(self.linear_hidden_layer(hidden))
-        output = self.act_fn(self.linear_output_layer(hidden))
+        output = self.linear_output_layer(hidden)
         return output
 
     @jit.script_method
     def calculate_cost(self,actions,beliefs,states):
-        plan_horizon = actions.shape[0]
         population_size = actions.shape[1] # works as a batch size
         future_obs = torch.empty(population_size, 0).cuda()#.to(device=self.device)#to(device=self.device) ###DA SISTEMAREEEEEE
 
         # Collapse sequence into 1 single vector
-        actions = actions[0:plan_horizon].view(population_size,-1)
+        actions = actions[0:self.sequence_len].view(population_size,-1)
 
-        for i in range(plan_horizon):
+        for i in range(self.sequence_len):
             future_frame = self.observation_model(beliefs[i],states[i])
             future_enc_obs = self.encoder(future_frame)
             future_obs = torch.cat([future_obs,future_enc_obs], dim=1)

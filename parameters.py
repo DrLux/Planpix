@@ -3,10 +3,10 @@ class Parameters():
     def __init__(self):
         # Parametri che cambio più frequentemente
         self.gpu_id = 0
-        self.seed = 1#123
-        self.num_init_episodes = 10
+        self.seed = 163
+        self.num_init_episodes =10
         self.collect_interval = 100
-
+        self.use_cuda = True
 
         ### ENV ####
         self.env_name = 'cheetah-run'
@@ -35,11 +35,11 @@ class Parameters():
         self.top_candidates = 100
 
         # Regularizer
-        self.reg_batch_size = 80
-        self.reg_chunck_len = self.planning_horizon
-        self.reg_hidden_size = 500
-        self.noise_std = 0.5
-        self.reg_num_hidden_layers = 5
+        self.reg_batch_size = 300
+        self.reg_chunck_len = 1#self.planning_horizon
+        self.reg_hidden_size = 200
+        self.noise_std = 0.3
+        self.reg_num_hidden_layers = 2
 
         # Learning
         self.activation_function = 'relu'
@@ -47,14 +47,14 @@ class Parameters():
         self.learning_rate = 1e-3
         self.adam_epsilon = 1e-4
         self.device = None
-        self.use_cuda = True
+        #self.use_cuda = True
         #self.gpu_id = 0
         self.batch_size = 50
         
         # Interactions with the environment
         self.free_nats = 3 # nella loss di KL invece di prendere il valore maggiore di distanza prende la media dei 3 valori 
         self.action_noise = 0.3
-        self.test_episodes = 3
+        self.test_episodes = 1#3
         self.flag_render = False
         self.max_episode_length = 1000
         self.training_episodes = 802

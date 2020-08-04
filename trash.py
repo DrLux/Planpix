@@ -76,3 +76,34 @@ obs = obs.view(1,1,-1)# -1 stand for 3*64*64
 next_obs = next_obs.view(1,1,-1)
         
 input = torch.cat([obs,acts,next_obs] , dim=2) #input.shape:  torch.Size([1, 1, 24582])
+
+
+#######################
+Regularizer con convoluzioni
+#DAE with (obs, act, next obs) as the data
+    def __init__(self, embedding_size,action_size, noise_std, activation_function='relu'):
+        super().__init__()
+        self.noise_std = noise_std
+        self.act_fn = getattr(F, activation_function)
+        self.action_size = action_size
+        self.emb_action_size = 2
+        self.emb_obs_size = 1024
+        self.concatenated_size = self.emb_obs_size + self.emb_obs_size + self.emb_action_size
+        
+        self.enc_obs_l1    = nn.Conv2d(3, 32, 4, stride=2) # conv layer (depth from 3 --> 32), 4x4 kernels
+        self.enc_obs_l2    = nn.Conv2d(32, 64, 4, stride=2)
+        self.enc_obs_l3    = nn.Conv2d(64, 128, 4, stride=2)
+        self.enc_obs_l4    = nn.Conv2d(128, 256, 4, stride=2)
+        
+        self.enc_act       = nn.Linear(self.action_size,self.emb_action_size)
+        
+        #self.hidden_layer_l1  = nn.Linear(self.concatenated_size,self.emb_obs_size)
+        #self.hidden_layer_l2  = nn.Linear(self.emb_obs_size,self.emb_obs_size)
+        #self.hidden_layer_l3  = nn.Linear(self.emb_obs_size,self.concatenated_size)
+        
+        self.dec_act       = nn.Linear(self.emb_action_size,self.action_size)
+
+        self.dec_obs_l4    = nn.ConvTranspose2d(256, 128, 4, stride=2)
+        self.dec_obs_l3    = nn.ConvTranspose2d(128, 64, 4, stride=2)
+        self.dec_obs_l2    = nn.ConvTranspose2d(64, 32, 5, stride=2)
+        self.dec_obs_

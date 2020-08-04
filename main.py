@@ -13,7 +13,8 @@ class Initializer():
   def __init__(self):  
       self.parms = Parameters()
       self.results_dir = os.path.join(self.parms.results_path)
-      self.metrics = {'steps': [], 'episodes': [], 'train_rewards': [], 'test_episodes': [], 'test_rewards': [], 'observation_loss': [], 'reward_loss': [], 'kl_loss': [], 'regularizer_loss': []}
+      #self.metrics = {'steps': [], 'episodes': [], 'train_rewards': [], 'test_episodes': [], 'test_rewards': [], 'observation_loss': [], 'reward_loss': [], 'kl_loss': [], 'regularizer_loss': []}
+      self.metrics = {'steps': [], 'episodes': [], 'train_rewards': [], 'test_episodes': [], 'test_rewards': [], 'observation_loss': [], 'reward_loss': [], 'kl_loss': []}
       
 
       os.makedirs(self.results_dir, exist_ok=True) 
@@ -41,8 +42,6 @@ class Initializer():
       print("Starting initialization buffer.")
       self.init_exp_rep()
       
-      #obs,act,next_obs, term, next_term =self.D.get_trajectories(self.parms.reg_batch_size,self.parms.reg_chunck_len)
-      
       self.trainer = Trainer(self.parms,self.D,self.metrics,self.results_dir,self.env)
       
       # Load checkpoints
@@ -52,7 +51,7 @@ class Initializer():
       #self.trainer.test_model()
       #self.trainer.dump_plan_video()
 
-      self.trainer.train_regularizer()
+      #self.trainer.train_regularizer()
       
       self.env.close()
       #print("END.")
