@@ -7,7 +7,7 @@ from torch.nn import BatchNorm1d
 
 # Wraps the input tuple for a function to process a time x batch x features sequence in batch x features (assumes one output)
 def bottle(f, x_tuple):
-    x_sizes = tuple(map(lambda x: x.size(), x_tuple)) #creo una tupla con le size di x_tuple
+    x_sizes = tuple(map(lambda x: x.size(), x_tuple))
     y = f(*map(lambda x: x[0].view(x[1][0] * x[1][1], *x[1][2:]), zip(x_tuple, x_sizes)))
     y_size = y.size()
     return y.view(x_sizes[0][0], x_sizes[0][1], *y_size[1:])
@@ -15,51 +15,31 @@ def bottle(f, x_tuple):
 class Regularizer(jit.ScriptModule):
 
     #DAE with (obs, act, next obs) as the data
-    def __init__(self,obs_size, act_size, hidden_size, planning_horizon, num_hidden_layers,encoder,observation_model,device,act_fn='relu'):
+    def __init__(self,belief_size,state_size, act_size, hidden_size, num_hidden_layers,planning_horizon,act_fn='relu'):
         super().__init__()
-        self.sequence_len = planning_horizon
-        self.devide = device
-        self.obs_size = obs_size
-        self.input_size = (obs_size + act_size)*self.sequence_len 
+        self.sequence_len  = planning_horizon
+        self.input_size = (belief_size + state_size + act_size)*self.sequence_len 
         self.linear_input_layer = nn.Linear(self.input_size, hidden_size) #input is the concatanation of obs,act,next_obs
         self.linear_hidden_layer = nn.Linear(hidden_size, hidden_size)
         self.linear_output_layer =  nn.Linear(hidden_size, self.input_size)   
         self.act_fn = getattr(F, act_fn)
         self.num_hidden_layers = num_hidden_layers
-        self.observation_model = observation_model
-        self.encoder = encoder
-
-    @jit.script_method
+        
     def predict(self,input):
-        hidden = self.act_fn(self.linear_input_layer(input))
+        hidden = self.linear_input_layer(input)
         for _ in range(self.num_hidden_layers):
-            hidden = self.act_fn(self.linear_hidden_layer(hidden))
+            hidden = self.linear_hidden_layer(hidden)
         output = self.linear_output_layer(hidden)
         return output
 
     @jit.script_method
-    def calculate_cost(self,actions,beliefs,states):
-        population_size = actions.shape[1] # works as a batch size
-        future_obs = torch.empty(population_size, 0).cuda()#.to(device=self.device)#to(device=self.device) ###DA SISTEMAREEEEEE
-
-        # Collapse sequence into 1 single vector
-        actions = actions[0:self.sequence_len].view(population_size,-1)
-
-        for i in range(self.sequence_len):
-            future_frame = self.observation_model(beliefs[i],states[i])
-            future_enc_obs = self.encoder(future_frame)
-            future_obs = torch.cat([future_obs,future_enc_obs], dim=1)
-
-        # Joins transition
-        chunk = torch.cat([future_obs,actions] , dim=1)
-        
-        # Reconstruct chunck
-        pred = self.predict(chunk)
-
+    def compute_cost(self,input):
+        pred = self.predict(input)
         # Calculate divergence
-        error = (pred - chunk).pow(2).mean(dim=1) #from shape[1000,12360] to shape[1000,1]
+        error = (pred - input).pow(2).mean(dim=1) #from shape[1000,12360] to shape[1000,1]
         return error
 
+        
 
 class TransitionModel(jit.ScriptModule):
     __constants__ = ['min_std_dev']
@@ -170,5 +150,5 @@ class RewardModel(jit.ScriptModule):
     def forward(self, belief, state):
         hidden = self.act_fn(self.fc1(torch.cat([belief, state], dim=1)))
         hidden = self.act_fn(self.fc2(hidden))
-        reward = self.fc3(hidden).squeeze(dim=1)
+        reward = self.act_fn(self.fc3(hidden)).squeeze(dim=1)
         return reward

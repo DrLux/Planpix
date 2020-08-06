@@ -4,22 +4,18 @@ import numpy as np
 import plotly
 from plotly.graph_objs import Scatter
 from plotly.graph_objs.scatter import Line
-from plotly.subplots import make_subplots
-import plotly.graph_objects as go
 
-
-# Plots min, max and mean + standard deviation bars of a population over time
 def double_lineplot(xs, ys_1, ys_2, title, path='', xaxis='steps'):
   data = []
   data.append(Scatter(x=xs, y=ys_1, name="Real Rewards"))
   data.append(Scatter(x=xs, y=ys_2, name="Predicted Rewards"))
-
 
   plotly.offline.plot({
     'data': data,
     'layout': dict(title=title, xaxis={'title': xaxis}, yaxis={'title': title})
   }, filename=os.path.join(path, title + '.html'), auto_open=False)
 
+# Plots min, max and mean + standard deviation bars of a population over time
 def lineplot(xs, ys_population, title, path='', xaxis='episode'):
   max_colour, mean_colour, std_colour, transparent = 'rgb(0, 132, 180)', 'rgb(0, 172, 237)', 'rgba(29, 202, 255, 0.2)', 'rgba(0, 0, 0, 0)'
 
