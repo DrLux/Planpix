@@ -68,15 +68,15 @@ class TransitionModel(jit.ScriptModule):
             _state = _state if nonterminals is None else _state * nonterminals[t]  # Mask if previous transition was terminal
             # Compute belief (deterministic hidden state)
             hidden = self.act_fn(self.fc_embed_state_action(torch.cat([_state, actions[t]], dim=1)))
-
             beliefs[t + 1] = self.rnn(hidden, beliefs[t])
+
             # Compute state prior by applying transition dynamics
             hidden = self.act_fn(self.fc_embed_belief_prior(beliefs[t + 1]))
             prior_means[t + 1], _prior_std_dev = torch.chunk(self.fc_state_prior(hidden), 2, dim=1)
             prior_std_devs[t + 1] = F.softplus(_prior_std_dev) + self.min_std_dev
-            prior_states[t + 1] = prior_means[t + 1] + prior_std_devs[t + 1] * torch.randn_like(prior_means[t + 1])     
-            if observations is not None:
+            prior_states[t + 1] = prior_means[t + 1] + prior_std_devs[t + 1] * torch.randn_like(prior_means[t + 1]) 
 
+            if observations is not None:
                 # Compute state posterior by applying transition dynamics and using current observation
                 t_ = t - 1  # Use t_ to deal with different time indexing for observations
                 hidden = self.act_fn(self.fc_embed_belief_posterior(torch.cat([beliefs[t + 1], observations[t_ + 1]], dim=1)))

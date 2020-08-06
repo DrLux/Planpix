@@ -1,5 +1,6 @@
+##################################################################################
 ######### DUMP PLAN
-    '''
+
     def dump_plan(self): 
         # Set models to eval mode
         self.transition_model.eval()
@@ -45,9 +46,10 @@
         self.observation_model.train()
         self.reward_model.train()
         self.encoder.train()
-    '''
+    
 
-###################
+#####################################################################################################
+
 OLD REGULARIZER
 
 class Regularizer(jit.ScriptModule):
@@ -69,7 +71,8 @@ class Regularizer(jit.ScriptModule):
         return output
 
 
-#####à 
+#######################################################################################
+
 Preprocess data
 
 obs = obs.view(1,1,-1)# -1 stand for 3*64*64
@@ -78,7 +81,8 @@ next_obs = next_obs.view(1,1,-1)
 input = torch.cat([obs,acts,next_obs] , dim=2) #input.shape:  torch.Size([1, 1, 24582])
 
 
-#######################
+#########################################################################################################
+
 Regularizer con convoluzioni
 #DAE with (obs, act, next obs) as the data
     def __init__(self, embedding_size,action_size, noise_std, activation_function='relu'):
@@ -107,3 +111,10 @@ Regularizer con convoluzioni
         self.dec_obs_l3    = nn.ConvTranspose2d(128, 64, 4, stride=2)
         self.dec_obs_l2    = nn.ConvTranspose2d(64, 32, 5, stride=2)
         self.dec_obs_
+
+
+##################################################################################
+Collect real vs. predicted frames for video
+observation_model(belief, posterior_state).cpu() ->  torch.from_numpy(prova).float
+save_image(torch.as_tensor(frames[-1]), os.path.join(results_dir, 'test_episode_%s.png' % t))
+           

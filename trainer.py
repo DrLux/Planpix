@@ -22,9 +22,20 @@ class Trainer():
         self.metrics = metrics
         self.env = env
         self.tested_episodes = 0
-        self.results_dir = results_dir 
-        self.model_path = self.results_dir # os.path.join(self.results_dir, 'model') 
-        self.video_path = self.results_dir #os.path.join(self.results_dir, 'video') 
+
+        self.statistics_path = results_dir+'/statistics' 
+        self.model_path = results_dir+'/model' 
+        self.video_path = results_dir+'/video' 
+        self.screenshot_path = results_dir+'/screenshot'
+        self.rew_vs_pred_rew_path = results_dir+'/rew_vs_pred_rew'
+        
+        #if folder do not exists, create it
+        os.makedirs(self.statistics_path, exist_ok=True) 
+        os.makedirs(self.model_path, exist_ok=True) 
+        os.makedirs(self.video_path, exist_ok=True) 
+        os.makedirs(self.screenshot_path, exist_ok=True) 
+        os.makedirs(self.rew_vs_pred_rew_path, exist_ok=True) 
+         
 
         # Create models
         self.transition_model = TransitionModel(self.parms.belief_size, self.parms.state_size, self.env.action_size, self.parms.hidden_size, self.parms.embedding_size, self.parms.activation_function).to(device=self.parms.device)
@@ -40,7 +51,7 @@ class Trainer():
         self.free_nats = torch.full((1, ), self.parms.free_nats, dtype=torch.float32, device=self.parms.device)  # Allowed deviation in KL divergence
 
     def load_checkpoints(self):
-        model_path = self.results_dir+'/best_model'
+        model_path = self.model_path+'/best_model'
         os.makedirs(model_path, exist_ok=True) 
         files = os.listdir(model_path)
         if files:
@@ -60,7 +71,7 @@ class Trainer():
         # Infer belief over current state q(s_t|o≤t,a<t) from the history
 
         ##### add reward to the encoded obs
-        encoded_obs = self.encoder(observation).unsqueeze(dim=0).to(device=self.parms.device)
+        encoded_obs = self.encoder(observation).unsqueeze(dim=0).to(device=self.parms.device)        
         rew_as_obs = torch.tensor(reward).type(torch.float).unsqueeze(dim=0)
         rew_as_obs = rew_as_obs.unsqueeze(dim=-1).to(device=self.parms.device)
         enc_obs_with_rew = torch.cat([encoded_obs, rew_as_obs], dim=2)
@@ -68,10 +79,9 @@ class Trainer():
 
         belief, _, _, _, posterior_state, _, _ = self.transition_model(posterior_state, action.unsqueeze(dim=0), belief, enc_obs_with_rew)  # Action and observation need extra time dimension
         belief, posterior_state = belief.squeeze(dim=0), posterior_state.squeeze(dim=0)  # Remove time dimension from belief/state
-        
-        #if (explore == False):
 
-        action,_,_,_,pred_next_rew = self.planner(belief, posterior_state)  # Get action from planner(q(s_t|o≤t,a<t), p)      
+        action,_,_,_,pred_next_rew = self.planner(belief, posterior_state,explore)  # Get action from planner(q(s_t|o≤t,a<t), p)      
+        
         if explore:
             action = action + self.parms.action_noise * torch.randn_like(action)  # Add exploration noise ε ~ p(ε) to the action
         action.clamp_(min=min_action, max=max_action)  # Clip action range
@@ -124,9 +134,9 @@ class Trainer():
         self.metrics['observation_loss'].append(losses[0])
         self.metrics['reward_loss'].append(losses[1])
         self.metrics['kl_loss'].append(losses[2])
-        lineplot(self.metrics['episodes'][-len(self.metrics['observation_loss']):], self.metrics['observation_loss'], 'observation_loss', self.results_dir)
-        lineplot(self.metrics['episodes'][-len(self.metrics['reward_loss']):], self.metrics['reward_loss'], 'reward_loss', self.results_dir)
-        lineplot(self.metrics['episodes'][-len(self.metrics['kl_loss']):], self.metrics['kl_loss'], 'kl_loss', self.results_dir)
+        lineplot(self.metrics['episodes'][-len(self.metrics['observation_loss']):], self.metrics['observation_loss'], 'observation_loss', self.statistics_path)
+        lineplot(self.metrics['episodes'][-len(self.metrics['reward_loss']):], self.metrics['reward_loss'], 'reward_loss', self.statistics_path)
+        lineplot(self.metrics['episodes'][-len(self.metrics['kl_loss']):], self.metrics['kl_loss'], 'kl_loss', self.statistics_path)
         
     def explore_and_collect(self,episode):
         tqdm.write("Collect new data:")
@@ -158,9 +168,11 @@ class Trainer():
         self.metrics['steps'].append( (t * self.env.action_repeat) + self.metrics['steps'][-1])
         self.metrics['episodes'].append(episode)
         self.metrics['train_rewards'].append(total_reward)
-        lineplot(self.metrics['episodes'][-len(self.metrics['train_rewards']):], self.metrics['train_rewards'], 'train_rewards', self.results_dir)
-        double_lineplot(np.arange(total_steps), real_rew, predicted_rew, "Real vs Predicted rewards_%s" %str(episode), self.results_dir)
+        self.metrics['predicted_rewards'].append(np.array(predicted_rew).sum())
 
+        lineplot(self.metrics['episodes'][-len(self.metrics['train_rewards']):], self.metrics['train_rewards'], 'train_rewards', self.statistics_path)
+        double_lineplot(self.metrics['episodes'], self.metrics['train_rewards'], self.metrics['predicted_rewards'], "train_r_vs_pr", self.statistics_path)
+        double_lineplot(np.arange(total_steps), real_rew, predicted_rew, "Real vs Predicted rewards_%s" %str(episode), self.rew_vs_pred_rew_path)
 
     def train_models(self):
         # da (num_episodi_per_inizializzare) a (training_episodes + episodi_per_inizializzare)
@@ -170,7 +182,7 @@ class Trainer():
             self.explore_and_collect(episode)
             if episode % self.parms.test_interval == 0:
                 self.test_model(episode)
-                torch.save(self.metrics, os.path.join(self.results_dir, 'metrics.pth'))
+                torch.save(self.metrics, os.path.join(self.model_path, 'metrics.pth'))
                 torch.save({'transition_model': self.transition_model.state_dict(), 'observation_model': self.observation_model.state_dict(), 'reward_model': self.reward_model.state_dict(), 'encoder': self.encoder.state_dict(), 'optimiser': self.optimiser.state_dict()}, os.path.join(self.model_path, 'models_%d.pth' % episode))
 
         return self.metrics
@@ -193,7 +205,7 @@ class Trainer():
         predicted_rew = torch.zeros([total_steps,self.parms.test_episodes])
 
         with torch.no_grad():
-            observation, total_rewards, video_frames = test_envs.reset(), np.zeros((self.parms.test_episodes, )), []
+            observation, total_rewards, video_frames = test_envs.reset(), np.zeros((self.parms.test_episodes, )), []            
             belief, posterior_state, action = torch.zeros(self.parms.test_episodes, self.parms.belief_size, device=self.parms.device), torch.zeros(self.parms.test_episodes, self.parms.state_size, device=self.parms.device), torch.zeros(self.parms.test_episodes, self.env.action_size, device=self.parms.device)
             tqdm.write("Testing model.")
             for t in range(total_steps): #floor division    
@@ -202,9 +214,6 @@ class Trainer():
 
                 real_rew[t] = rewards
                 predicted_rew[t]  = pred_next_rew
-                # Collect real vs. predicted frames for video
-                #observation_model(belief, posterior_state).cpu() ->  torch.from_numpy(prova).float
-                #save_image(torch.as_tensor(frames[-1]), os.path.join(results_dir, 'test_episode_%s.png' % t))
                 video_frames.append(make_grid(torch.cat([observation, self.observation_model(belief, posterior_state).cpu()], dim=3) + 0.5, nrow=5).numpy())  # Decentre
                 observation = next_observation
                 if done.sum().item() == self.parms.test_episodes:
@@ -217,10 +226,10 @@ class Trainer():
         self.metrics['test_episodes'].append(episode)
         self.metrics['test_rewards'].append(total_rewards.tolist())
 
-        lineplot(self.metrics['test_episodes'], self.metrics['test_rewards'], 'test_rewards', self.results_dir)
+        lineplot(self.metrics['test_episodes'], self.metrics['test_rewards'], 'test_rewards', self.statistics_path)
         
         for i in range(self.parms.test_episodes):
-            double_lineplot(np.arange(total_steps), real_rew[i], predicted_rew[i], "Real vs Predicted rewards_ep%s_test_%s" %(str(episode),str(i+1)), self.results_dir)
+            double_lineplot(np.arange(total_steps), real_rew[i], predicted_rew[i], "Real vs Predicted rewards_ep%s_test_%s" %(str(episode),str(i+1)), self.statistics_path)
 
         write_video(video_frames, 'test_episode_%s' % str(episode), self.video_path)  # Lossy compression
         # Set models to train mode
@@ -282,7 +291,7 @@ class Trainer():
 
         belief, _, _, _, posterior_state, _, _ = self.transition_model(posterior_state, action.unsqueeze(dim=0), belief, enc_obs_with_rew)  
         belief, posterior_state = belief.squeeze(dim=0), posterior_state.squeeze(dim=0)  # Remove time dimension from belief/state
-        next_action, beliefs, states, plan = self.planner(belief, posterior_state)  # Get action from planner(q(s_t|o≤t,a<t), p)      
+        next_action, beliefs, states, plan = self.planner(belief, posterior_state,False)  # Get action from planner(q(s_t|o≤t,a<t), p)      
         predicted_frames = self.observation_model(beliefs, states).to(device=self.parms.device)
 
         for i in range(self.parms.planning_horizon):
@@ -290,8 +299,8 @@ class Trainer():
             next_observation, reward, done = env.step(plan[i].cpu())  
             next_observation = next_observation.squeeze(dim=0)
             video_frames.append(make_grid(torch.cat([next_observation, predicted_frames[i]], dim=1) + 0.5, nrow=2).numpy())  # Decentre
-            save_image(torch.as_tensor(next_observation), os.path.join(self.results_dir, 'original_obs%d.png' % i))
-            save_image(torch.as_tensor(predicted_frames[i]), os.path.join(self.results_dir, 'prediction_obs%d.png' % i))
+            save_image(torch.as_tensor(next_observation), os.path.join(self.screenshot_path, 'original_obs%d.png' % i))
+            save_image(torch.as_tensor(predicted_frames[i]), os.path.join(self.screenshot_path, 'prediction_obs%d.png' % i))
 
 
         write_video(video_frames, 'dump_plan', self.video_path)  # Lossy compression
@@ -318,10 +327,6 @@ class Trainer():
             actions = actions.view(self.parms.batch_size,-1)
 
             chunk = torch.cat([beliefs,prior_states,actions] , dim=1)
-            print("beliefs :", beliefs.shape)
-            print("actions: ", actions.shape)
-            print("chunk: ", chunk.shape)
-            assert 1 == 2
             #reg_cost = self.regularizer.compute_cost(chunk)
 
             # add noise to data (denoising autoencoder)

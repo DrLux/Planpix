@@ -33,7 +33,7 @@ def _images_to_observation(images, bit_depth):
 class ControlSuiteEnv():
     def __init__(self, env_name, seed, max_episode_length, bit_depth):
         domain, task = env_name.split('-')
-        self._env = suite.load(domain_name=domain, task_name=task)#, task_kwargs={'random': seed})
+        self._env = suite.load(domain_name=domain, task_name=task, task_kwargs={'random': seed})
         self._env = pixels.Wrapper(self._env)
         self.max_episode_length = max_episode_length
         self.action_repeat = CONTROL_SUITE_ACTION_REPEATS[domain]

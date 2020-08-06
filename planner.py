@@ -16,9 +16,10 @@ class MPCPlanner(jit.ScriptModule):
         self.regularizer = regularizer
 
     @jit.script_method
-    def forward(self, belief, state):
+    def forward(self, belief, state, explore:bool):
         B, H, Z = belief.size(0), belief.size(1), state.size(1)  #B is the batch size
         belief, state = belief.unsqueeze(dim=1).expand(B, self.candidates, H).reshape(-1, H), state.unsqueeze(dim=1).expand(B, self.candidates, Z).reshape(-1, Z)
+
         # Initialize factorized belief over action sequences q(a_t:t+H) ~ N(0, I)
         action_mean, action_std_dev = torch.zeros(self.planning_horizon, B, 1, self.action_size, device=belief.device), torch.ones(self.planning_horizon, B, 1, self.action_size, device=belief.device)
         
@@ -34,24 +35,21 @@ class MPCPlanner(jit.ScriptModule):
             actions.clamp_(min=self.min_action, max=self.max_action)  # Clip action range
             # Sample next states
             beliefs, states, _, _ = self.transition_model(state, actions, belief)
-            
+
             # Calculate expected returns (technically sum of rewards over planning horizon)
             returns = self.reward_model(beliefs.view(-1, H), states.view(-1, Z)).view(self.planning_horizon, -1)
             next_returns = returns[0,:]
             summed_returns = returns.sum(dim=0)
-             
 
             # Calculate regularization term
+            #if (explore): #self.optimisation_iters-1
             if (True): #self.optimisation_iters-1
-                #print("beliefs: ", beliefs.shape)
                 reg_beliefs = beliefs.view(self.candidates,-1)
                 reg_states = states.view(self.candidates,-1)
                 reg_actions = actions.view(self.candidates,-1)
-                #print("reg_states: ", reg_states.shape)
-                #print("reg_actions: ", reg_actions.shape)
                 chunk = torch.cat([reg_beliefs,reg_states,reg_actions] , dim=1)
                 reg_cost = self.regularizer.compute_cost(chunk) 
-                summed_returns = summed_returns + reg_cost ##CONTROLLARE LA SHAPE QUI
+                summed_returns = summed_returns + (reg_cost * 0.3) 
 
             # Re-fit belief to the K best action sequences
             _, topk = summed_returns.reshape(B, self.candidates).topk(self.top_candidates, dim=1, largest=True, sorted=False) # topk = 100 indexes
@@ -74,11 +72,12 @@ class MPCPlanner(jit.ScriptModule):
             states = states.mean(dim=1, keepdim=False) #usare questo
             planned_actions = action_mean.squeeze(dim=1)
             #######################################################
+
             # Update belief with new means and standard deviations
             action_mean, action_std_dev = best_actions.mean(dim=2, keepdim=True), best_actions.std(dim=2, unbiased=False, keepdim=True)
             mean_next_return = top_next_returns.mean(dim=1)
             
 
-        # Return first action mean µ_t            
+        # Return first action mean µ_t                    
         return action_mean[0].squeeze(dim=1), beliefs, states,planned_actions,mean_next_return
         

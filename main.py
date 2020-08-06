@@ -13,7 +13,7 @@ class Initializer():
   def __init__(self):  
       self.parms = Parameters()
       self.results_dir = os.path.join(self.parms.results_path)
-      self.metrics = {'steps': [], 'episodes': [], 'train_rewards': [], 'test_episodes': [], 'test_rewards': [], 'observation_loss': [], 'reward_loss': [], 'kl_loss': []}
+      self.metrics = {'steps': [], 'episodes': [], 'train_rewards': [], 'predicted_rewards': [], 'test_episodes': [], 'test_rewards': [], 'observation_loss': [], 'reward_loss': [], 'kl_loss': []}
       
 
       os.makedirs(self.results_dir, exist_ok=True) 
@@ -44,13 +44,13 @@ class Initializer():
       self.trainer = Trainer(self.parms,self.D,self.metrics,self.results_dir,self.env)
       
       # Load checkpoints
-      #self.trainer.load_checkpoints()
+      self.trainer.load_checkpoints()
       print("Total training episodes: ", self.parms.training_episodes, " Buffer sampling: ", self.parms.collect_interval)
       self.trainer.train_models()
       #self.trainer.test_model()
       #self.trainer.dump_plan_video()
 
-      self.trainer.train_regularizer()
+      #self.trainer.train_regularizer()
       
       self.env.close()
       #print("END.")
@@ -61,12 +61,13 @@ class Initializer():
     print("Setting seed")
     os.environ['PYTHONHASHSEED']=str(self.parms.seed)
     random.seed(self.parms.seed)
+    torch.random.seed()
     np.random.seed(self.parms.seed)
     torch.manual_seed(self.parms.seed)   
-    self.env.set_seed(self.parms.seed)
+    #self.env.set_seed(self.parms.seed)
+    torch.manual_seed(self.parms.seed)
     if self.parms.use_cuda:
       torch.cuda.manual_seed(self.parms.seed)
-      torch.manual_seed(self.parms.seed)
       torch.backends.cudnn.enabled=False
       torch.backends.cudnn.deterministic=True
         

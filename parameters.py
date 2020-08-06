@@ -3,9 +3,9 @@ class Parameters():
     def __init__(self):
         # Parametri che cambio più frequentemente
         self.gpu_id = 0
-        self.seed = 1
-        self.num_init_episodes = 3
-        self.use_cuda = True
+        self.seed = 1532
+        self.num_init_episodes = 1#3
+        self.use_cuda = False
         #self.collect_interval = 10 
 
 
@@ -55,11 +55,11 @@ class Parameters():
         # Interactions with the environment
         self.free_nats = 3 # nella loss di KL invece di prendere il valore maggiore di distanza prende la media dei 3 valori 
         self.action_noise = 0.3
-        self.test_episodes = 1
+        self.test_episodes = 1#3
         self.flag_render = False
         self.max_episode_length = 1000
         self.training_episodes = 602
-        self.collect_interval = 100 #numero di campioni che peschi dal buffer ad ogni iterazione 
+        self.collect_interval = 1#100 #numero di campioni che peschi dal buffer ad ogni iterazione 
         self.chunk_size = 50
         self.grad_clip_norm = 1000
         self.test_interval = 20
