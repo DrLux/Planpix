@@ -18,6 +18,36 @@ class ExperienceReplay():
         self.steps, self.episodes = 0, 0  # Tracks how much experience has been used in total
         self.bit_depth = bit_depth
 
+    def store_dataset(self,path):
+        print("Stroring dataset in: ", path)
+        np.savez_compressed(path,
+                            observations = self.observations, 
+                            actions = self.actions, 
+                            rewards = self.rewards, 
+                            nonterminal = self.nonterminals,
+                            tbs = self.tbs,
+                            idx = self.idx,
+                            full = self.full,
+                            steps = self.steps,
+                            episodes = self.episodes,
+                            bit_depth = self.bit_depth)
+
+
+    def load_dataset(self,path):
+        print("Loadign dataset from: ", path)
+        raw_data = np.load(path+"dataset.npz", allow_pickle=True)
+        prova = dict(raw_data)
+        self.observations = raw_data['observations']
+        self.actions = raw_data['actions']
+        self.rewards = raw_data['rewards']
+        self.nonterminals = raw_data['nonterminal']
+        self.tbs = raw_data['tbs']
+        self.idx = raw_data['idx']
+        self.full = raw_data['full']
+        self.steps = raw_data['steps']
+        self.episodes = raw_data['episodes']
+        self.bit_depth = raw_data['bit_depth']
+
     def append(self, observation, action, reward, done):
         self.observations[self.idx] = postprocess_observation(observation.numpy(), self.bit_depth)  # Decentre and discretise visual observations (to save memory)
         self.actions[self.idx] = action.numpy()

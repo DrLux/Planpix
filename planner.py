@@ -17,15 +17,13 @@ class MPCPlanner(jit.ScriptModule):
 
     @jit.script_method
     def forward(self, belief, state, explore:bool):
-        B, H, Z = belief.size(0), belief.size(1), state.size(1)  #B is the batch size
+        B, H, Z = belief.size(0), belief.size(1), state.size(1)  #B is the batch size, H belief size, Z state size 
         belief, state = belief.unsqueeze(dim=1).expand(B, self.candidates, H).reshape(-1, H), state.unsqueeze(dim=1).expand(B, self.candidates, Z).reshape(-1, Z)
 
         # Initialize factorized belief over action sequences q(a_t:t+H) ~ N(0, I)
         action_mean, action_std_dev = torch.zeros(self.planning_horizon, B, 1, self.action_size, device=belief.device), torch.ones(self.planning_horizon, B, 1, self.action_size, device=belief.device)
-        
         beliefs = torch.tensor([self.planning_horizon, self.candidates, H])
-        states = torch.tensor([self.planning_horizon,self.candidates,Z])
-        
+        states = torch.tensor([self.planning_horizon,self.candidates,Z])        
         planned_actions = torch.tensor([self.planning_horizon,self.action_size])
         mean_next_return = torch.tensor(B)
         
@@ -42,14 +40,13 @@ class MPCPlanner(jit.ScriptModule):
             summed_returns = returns.sum(dim=0)
 
             # Calculate regularization term
-            #if (explore): #self.optimisation_iters-1
-            if (True): #self.optimisation_iters-1
+            if (not explore): #qui va messo NOT explore
                 reg_beliefs = beliefs.view(self.candidates,-1)
                 reg_states = states.view(self.candidates,-1)
                 reg_actions = actions.view(self.candidates,-1)
                 chunk = torch.cat([reg_beliefs,reg_states,reg_actions] , dim=1)
                 reg_cost = self.regularizer.compute_cost(chunk) 
-                summed_returns = summed_returns + (reg_cost * 0.3) 
+                summed_returns = summed_returns + (reg_cost * 0)
 
             # Re-fit belief to the K best action sequences
             _, topk = summed_returns.reshape(B, self.candidates).topk(self.top_candidates, dim=1, largest=True, sorted=False) # topk = 100 indexes

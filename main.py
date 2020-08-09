@@ -13,7 +13,9 @@ class Initializer():
   def __init__(self):  
       self.parms = Parameters()
       self.results_dir = os.path.join(self.parms.results_path)
-      self.metrics = {'steps': [], 'episodes': [], 'train_rewards': [], 'predicted_rewards': [], 'test_episodes': [], 'test_rewards': [], 'observation_loss': [], 'reward_loss': [], 'kl_loss': []}
+      self.dataset_path = self.results_dir+'dataset' 
+      os.makedirs(self.dataset_path, exist_ok=True) 
+      self.metrics = {'steps': [], 'episodes': [], 'train_rewards': [], 'predicted_rewards': [], 'test_episodes': [], 'test_rewards': [], 'observation_loss': [], 'reward_loss': [], 'kl_loss': [], 'regularizer_loss': []}
       
 
       os.makedirs(self.results_dir, exist_ok=True) 
@@ -38,19 +40,20 @@ class Initializer():
       if self.parms.seed > 0: 
         self.set_seed()
 
-      print("Starting initialization buffer.")
       self.init_exp_rep()
-      
+      ###############################################
       self.trainer = Trainer(self.parms,self.D,self.metrics,self.results_dir,self.env)
       
       # Load checkpoints
-      self.trainer.load_checkpoints()
+      #self.trainer.load_checkpoints()
       print("Total training episodes: ", self.parms.training_episodes, " Buffer sampling: ", self.parms.collect_interval)
-      self.trainer.train_models()
+      #self.trainer.train_models()
+      #self.D.store_dataset(self.dataset_path)
+      #self.D.load_dataset(self.results_dir)
+      self.trainer.train_regularizer()
       #self.trainer.test_model()
       #self.trainer.dump_plan_video()
 
-      #self.trainer.train_regularizer()
       
       self.env.close()
       #print("END.")
@@ -61,10 +64,9 @@ class Initializer():
     print("Setting seed")
     os.environ['PYTHONHASHSEED']=str(self.parms.seed)
     random.seed(self.parms.seed)
-    torch.random.seed()
+    #torch.random.seed()
     np.random.seed(self.parms.seed)
     torch.manual_seed(self.parms.seed)   
-    #self.env.set_seed(self.parms.seed)
     torch.manual_seed(self.parms.seed)
     if self.parms.use_cuda:
       torch.cuda.manual_seed(self.parms.seed)
@@ -74,6 +76,7 @@ class Initializer():
 
 
   def init_exp_rep(self):
+    print("Starting initialization buffer.")
     for s in tqdm(range(1, self.parms.num_init_episodes +1)):
       observation, done, t = self.env.reset(), False, 0
       while not done:

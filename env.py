@@ -39,9 +39,6 @@ class ControlSuiteEnv():
         self.action_repeat = CONTROL_SUITE_ACTION_REPEATS[domain]
         self.bit_depth = bit_depth
 
-    def set_seed(self, seed):
-        self._env.seed = seed
-    
     def reset(self):
         self.t = 0  # Reset internal timer
         state = self._env.reset()
