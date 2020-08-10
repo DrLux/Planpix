@@ -36,8 +36,8 @@ class Parameters():
         self.top_candidates = 100
 
         # Regularizer
-        self.reg_hidden_size = 600
-        self.reg_num_hidden_layers = 0
+        self.reg_hidden_size = 160 
+        self.reg_num_hidden_layers = 1
         self.noise_std = 0.3
 
         # Learning

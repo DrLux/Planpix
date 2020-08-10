@@ -41,12 +41,11 @@ class MPCPlanner(jit.ScriptModule):
 
             # Calculate regularization term
             if (not explore): #qui va messo NOT explore
-                reg_beliefs = beliefs.view(self.candidates,-1)
-                reg_states = states.view(self.candidates,-1)
-                reg_actions = actions.view(self.candidates,-1)
-                chunk = torch.cat([reg_beliefs,reg_states,reg_actions] , dim=1)
-                reg_cost = self.regularizer.compute_cost(chunk) 
-                summed_returns = summed_returns + (reg_cost * 0)
+                current_obs = torch.cat([beliefs,states], dim=2)
+                transition = torch.cat([current_obs[:-1,:],actions[:-1],current_obs[1:,:]], dim=2)
+                transition = transition.view(-1,transition.shape[-1])
+                reg_cost = self.regularizer.compute_cost(transition) 
+                summed_returns = summed_returns - (reg_cost * 1)
 
             # Re-fit belief to the K best action sequences
             _, topk = summed_returns.reshape(B, self.candidates).topk(self.top_candidates, dim=1, largest=True, sorted=False) # topk = 100 indexes

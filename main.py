@@ -40,18 +40,18 @@ class Initializer():
       if self.parms.seed > 0: 
         self.set_seed()
 
-      self.init_exp_rep()
+      #self.init_exp_rep()
       ###############################################
       self.trainer = Trainer(self.parms,self.D,self.metrics,self.results_dir,self.env)
       
       # Load checkpoints
-      #self.trainer.load_checkpoints()
+      self.trainer.load_checkpoints()
       print("Total training episodes: ", self.parms.training_episodes, " Buffer sampling: ", self.parms.collect_interval)
       #self.trainer.train_models()
       #self.D.store_dataset(self.dataset_path)
       #self.D.load_dataset(self.results_dir)
-      self.trainer.train_regularizer()
-      #self.trainer.test_model()
+      #self.trainer.train_regularizer()
+      self.trainer.test_model()
       #self.trainer.dump_plan_video()
 
       
