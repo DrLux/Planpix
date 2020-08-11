@@ -17,13 +17,13 @@ class Regularizer(jit.ScriptModule):
     #DAE with (obs, act, next obs) as the data
     def __init__(self,belief_size,state_size, act_size, hidden_size, num_hidden_layers,planning_horizon,act_fn='relu'):
         super().__init__()
-        self.input_size = (belief_size + state_size)*2 + act_size 
+        self.sequence_len  = planning_horizon
+        self.input_size = (belief_size + state_size + act_size)*self.sequence_len 
         self.linear_input_layer = nn.Linear(self.input_size, hidden_size) #input is the concatanation of obs,act,next_obs
         self.linear_hidden_layer = nn.Linear(hidden_size, hidden_size)
         self.linear_output_layer =  nn.Linear(hidden_size, self.input_size)   
         self.act_fn = getattr(F, act_fn)
         self.num_hidden_layers = num_hidden_layers
-        self.planning_horizon = planning_horizon
         
     def predict(self,input):
         hidden = self.linear_input_layer(input)
@@ -36,9 +36,7 @@ class Regularizer(jit.ScriptModule):
     def compute_cost(self,input):
         pred = self.predict(input)
         # Calculate divergence
-        error = (pred - input).pow(2)#.sum(1) #from shape[1000,x] to shape[1000,1]
-        error = error.view([self.planning_horizon-1, -1, self.input_size])
-        error = error.sum(0).mean(1)
+        error = (pred - input).pow(2).mean(dim=1) #from shape[1000,12360] to shape[1000,1]
         return error
 
         

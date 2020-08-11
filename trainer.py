@@ -13,6 +13,7 @@ import torch
 import os
 from env import EnvBatcher,ControlSuiteEnv
 from tqdm import tqdm
+import os
 
 
 class Trainer():
@@ -114,26 +115,31 @@ class Trainer():
             beliefs, prior_states, prior_means, prior_std_devs, posterior_states, posterior_means, posterior_std_devs = self.transition_model(init_state, actions[:-1], init_belief, enc_obs_with_rew, nonterminals[:-1])
             
             # Input to Denoising Autoencode
-            reg_beliefs = beliefs[:,0,:]
-            reg_posterior_states = posterior_states[:,0,:]
-            reg_actions = actions[:-2,0,:] # fidati sono sicuro
-
-            current_obs = torch.cat([reg_beliefs,reg_posterior_states], dim=1)
-            transition = torch.cat([current_obs[:-1,:],reg_actions,current_obs[1:,:]], dim=1)
-            pred = self.regularizer.predict(transition)
+            #reg_beliefs = beliefs[0:self.parms.planning_horizon]
+            #reg_beliefs = torch.reshape(torch.transpose(reg_beliefs, 1,0), [self.parms.batch_size,-1])
+            #reg_posterior_states = posterior_states[0:self.parms.planning_horizon]
+            #reg_posterior_states = torch.reshape(torch.transpose(reg_posterior_states, 1,0), [self.parms.batch_size,-1])
+            #reg_actions = actions[0:self.parms.planning_horizon]
+            #reg_actions = torch.reshape(torch.transpose(reg_actions, 1,0), [self.parms.batch_size,-1])
+            #chunk = torch.cat([reg_beliefs,reg_posterior_states,reg_actions] , dim=1)
 
             # add noise to data (denoising autoencoder)
-            noisy_inputs = transition + torch.randn_like(transition) * self.parms.noise_std
+            #noisy_inputs = chunk + torch.randn_like(chunk) * self.parms.noise_std
 
             # Make prediction and calculate loss
-            pred_reg_beliefs,pred_reg_post,pred_acts,pred_next_reg_beliefs,pred_next_reg_post = torch.split(pred,[self.parms.belief_size, self.parms.state_size, self.env.action_size, self.parms.belief_size, self.parms.state_size], dim=1)
-            pred_acts = pred_acts.clamp_(min=self.env.action_range[0], max=self.env.action_range[1])  # Clip action range
+            #pred = self.regularizer.predict(chunk)
+            #pred_beliefs,pred_posterior_states,pred_actions = torch.split(pred,[self.parms.belief_size*self.parms.planning_horizon, self.parms.state_size*self.parms.planning_horizon,self.env.action_size*self.parms.planning_horizon], dim=1)
+
+            #pred_posterior_states = pred_posterior_states.view(self.parms.batch_size,-1)
+            #pred_beliefs = pred_beliefs.view(self.parms.batch_size,-1)
+            #pred_actions = pred_actions.view(self.parms.batch_size,-1)
+            #pred_actions = pred_actions.clamp_(min=self.env.action_range[0], max=self.env.action_range[1])  # Clip action range
 
             # Calculate loss to DAE
-            belief_loss = F.mse_loss(pred_reg_beliefs, reg_beliefs[:-1,:]) + F.mse_loss(pred_next_reg_beliefs, reg_beliefs[1:,:])
-            state_loss = F.mse_loss(pred_reg_post, reg_posterior_states[:-1,:]) + F.mse_loss(pred_next_reg_post, reg_posterior_states[1:,:])
-            act_loss = F.mse_loss(pred_acts, reg_actions)
-            regularizer_loss = belief_loss + state_loss + act_loss
+            #belief_loss = F.mse_loss(pred_beliefs, reg_beliefs)
+            #state_loss = F.mse_loss(pred_posterior_states, reg_posterior_states)
+            #act_loss = F.mse_loss(pred_actions, reg_actions)
+            #regularizer_loss = belief_loss + state_loss + act_loss
 
             # Calculate observation likelihood, reward likelihood and KL losses (for t = 0 only for latent overshooting); sum over final dims, average over batch and time (original implementation, though paper seems to miss 1/T scaling?)
             # LOSS
@@ -143,23 +149,33 @@ class Trainer():
 
             # Update model parameters
             self.optimiser.zero_grad()
-            (regularizer_loss + observation_loss + reward_loss + kl_loss).backward() # BACKPROPAGATION
+
+            ################################
+            #print("iterazione: ", s)
+            #print("regularizer_loss: ", regularizer_loss)
+            #print("observation_loss: ", observation_loss)
+            #print("reward_loss: ", reward_loss)
+            #print("kl_loss: ", kl_loss)
+            ################################
+
+            #(regularizer_loss + observation_loss + reward_loss + kl_loss).backward() # BACKPROPAGATION
+            (observation_loss + reward_loss + kl_loss).backward() # BACKPROPAGATION
             nn.utils.clip_grad_norm_(self.param_list, self.parms.grad_clip_norm, norm_type=2)
             self.optimiser.step()
             # Store (0) observation loss (1) reward loss (2) KL loss
-            losses.append([observation_loss.item(), reward_loss.item(), kl_loss.item(), regularizer_loss.item()])
+            losses.append([observation_loss.item(), reward_loss.item(), kl_loss.item() ])#, regularizer_loss.item()])
 
         #save statistics and plot them
         losses = tuple(zip(*losses))  
         self.metrics['observation_loss'].append(losses[0])
         self.metrics['reward_loss'].append(losses[1])
         self.metrics['kl_loss'].append(losses[2])
-        self.metrics['regularizer_loss'].append(losses[3]) 
+        #self.metrics['regularizer_loss'].append(losses[3]) 
         
         lineplot(self.metrics['episodes'][-len(self.metrics['observation_loss']):], self.metrics['observation_loss'], 'observation_loss', self.statistics_path)
         lineplot(self.metrics['episodes'][-len(self.metrics['reward_loss']):], self.metrics['reward_loss'], 'reward_loss', self.statistics_path)
         lineplot(self.metrics['episodes'][-len(self.metrics['kl_loss']):], self.metrics['kl_loss'], 'kl_loss', self.statistics_path)
-        lineplot(self.metrics['episodes'][-len(self.metrics['regularizer_loss']):], self.metrics['regularizer_loss'], 'regularizer_loss', self.statistics_path)
+        #lineplot(self.metrics['episodes'][-len(self.metrics['regularizer_loss']):], self.metrics['regularizer_loss'], 'regularizer_loss', self.statistics_path)
         
     def explore_and_collect(self,episode):
         tqdm.write("Collect new data:")
@@ -207,6 +223,10 @@ class Trainer():
                 self.test_model(episode)
                 torch.save(self.metrics, os.path.join(self.model_path, 'metrics.pth'))
                 torch.save({'transition_model': self.transition_model.state_dict(), 'observation_model': self.observation_model.state_dict(), 'reward_model': self.reward_model.state_dict(), 'encoder': self.encoder.state_dict(), 'optimiser': self.optimiser.state_dict(), 'regularizer': self.regularizer.state_dict()}, os.path.join(self.model_path, 'models_%d.pth' % episode))
+            
+            # self parms dataset_interval
+            if episode % 100 == 0:
+                self.D.store_dataset(self.parms.dataset_path+'dump_dataset')
 
         return self.metrics
 
@@ -234,8 +254,8 @@ class Trainer():
             observation, total_rewards, video_frames = test_envs.reset(), np.zeros((self.parms.test_episodes, )), []            
             belief, posterior_state, action = torch.zeros(self.parms.test_episodes, self.parms.belief_size, device=self.parms.device), torch.zeros(self.parms.test_episodes, self.parms.state_size, device=self.parms.device), torch.zeros(self.parms.test_episodes, self.env.action_size, device=self.parms.device)
             tqdm.write("Testing model.")
-            for t in range(total_steps): #floor division   
-                print("iterazioen: ", t) 
+            for t in range(total_steps): #floor division    
+                #print("iterazione: ", t)
                 belief, posterior_state, action, next_observation, rewards, done, pred_next_rew  = self.update_belief_and_act(test_envs,  belief, posterior_state, action, observation.to(device=self.parms.device), list(rewards), self.env.action_range[0], self.env.action_range[1])
                 total_rewards += rewards.numpy()
                 real_rew[t] = rewards
@@ -244,9 +264,10 @@ class Trainer():
                 observation = next_observation
                 if done.sum().item() == self.parms.test_episodes:
                     break
-        print("total reward: ", total_rewards)
+            
         real_rew = torch.transpose(real_rew, 0, 1)
         predicted_rew = torch.transpose(predicted_rew, 0, 1)
+        #print("total_rewards: ", total_rewards)
         #save and plot metrics 
         self.tested_episodes += 1
         self.metrics['test_episodes'].append(episode)
@@ -334,9 +355,9 @@ class Trainer():
     
     
     def train_regularizer(self):
-        for i in range (800):
+        for i in range (200):
             # Prepare data# Draw sequence chunks {(o_t, a_t, r_t+1, terminal_t+1)} ~ D uniformly at random from the dataset (including terminal flags)
-            observations, actions, rewards, nonterminals = self.D.sample(self.parms.batch_size, self.parms.planning_horizon)#self.parms.chunk_size)
+            observations, actions, rewards, nonterminals = self.D.sample(self.parms.batch_size, self.parms.chunk_size)
 
             # Create initial belief and state for time t = 0
             init_belief, init_state = torch.zeros(self.parms.batch_size, self.parms.belief_size, device=self.parms.device), torch.zeros(self.parms.batch_size, self.parms.state_size, device=self.parms.device)
@@ -346,30 +367,35 @@ class Trainer():
             enc_obs_with_rew = torch.cat([encoded_obs, torch.unsqueeze(rewards[:-1], dim=2)], dim=2) #aggiunge all'obs il reward precedente (obs_x,rew_x-1)
             ####
             
-            # Calculate future tranisions 
             beliefs, prior_states, prior_means, prior_std_devs, posterior_states, posterior_means, posterior_std_devs = self.transition_model(init_state, actions[:-1], init_belief, enc_obs_with_rew, nonterminals[:-1])
-            
             # Input to Denoising Autoencode
-            reg_beliefs = beliefs[:,0,:]
-            reg_posterior_states = posterior_states[:,0,:]
-            reg_actions = actions[:-2,0,:] # fidati sono sicuro
+            reg_beliefs = beliefs[0:self.parms.planning_horizon]
+            reg_beliefs = torch.reshape(torch.transpose(reg_beliefs, 1,0), [self.parms.batch_size,-1])
 
-            current_obs = torch.cat([reg_beliefs,reg_posterior_states], dim=1)
-            transition = torch.cat([current_obs[:-1,:],reg_actions,current_obs[1:,:]], dim=1)
-            #reg_cost = self.regularizer.compute_cost(transition)
+            reg_posterior_states = posterior_states[0:self.parms.planning_horizon]
+            reg_posterior_states = torch.reshape(torch.transpose(reg_posterior_states, 1,0), [self.parms.batch_size,-1])
+            reg_actions = actions[0:self.parms.planning_horizon]
+            reg_actions = torch.reshape(torch.transpose(reg_actions, 1,0), [self.parms.batch_size,-1])
+            chunk = torch.cat([reg_beliefs,reg_posterior_states,reg_actions] , dim=1)
+            #reg_cost = self.regularizer.compute_cost(chunk)
 
             # add noise to data (denoising autoencoder)
-            noisy_inputs = transition + torch.randn_like(transition) * self.parms.noise_std
+            noisy_inputs = chunk + torch.randn_like(chunk) * self.parms.noise_std
 
             # Make prediction and calculate loss
-            pred = self.regularizer.predict(transition)
-            pred_reg_beliefs,pred_reg_post,pred_acts,pred_next_reg_beliefs,pred_next_reg_post = torch.split(pred,[self.parms.belief_size, self.parms.state_size, self.env.action_size, self.parms.belief_size, self.parms.state_size], dim=1)
-            pred_acts = pred_acts.clamp_(min=self.env.action_range[0], max=self.env.action_range[1])  # Clip action range
+            pred = self.regularizer.predict(chunk)
+            pred_beliefs,pred_posterior_states,pred_actions = torch.split(pred,[self.parms.belief_size*self.parms.planning_horizon, self.parms.state_size*self.parms.planning_horizon,self.env.action_size*self.parms.planning_horizon], dim=1)
+
+
+            pred_posterior_states = pred_posterior_states.view(self.parms.batch_size,-1)
+            pred_beliefs = pred_beliefs.view(self.parms.batch_size,-1)
+            pred_actions = pred_actions.view(self.parms.batch_size,-1)
+            pred_actions = pred_actions.clamp_(min=self.env.action_range[0], max=self.env.action_range[1])  # Clip action range
             
-            #calculate loss 
-            belief_loss = F.mse_loss(pred_reg_beliefs, reg_beliefs[:-1,:]) + F.mse_loss(pred_next_reg_beliefs, reg_beliefs[1:,:])
-            state_loss = F.mse_loss(pred_reg_post, reg_posterior_states[:-1,:]) + F.mse_loss(pred_next_reg_post, reg_posterior_states[1:,:])
-            act_loss = F.mse_loss(pred_acts, reg_actions)
+            #calculate loss
+            belief_loss = F.mse_loss(pred_beliefs, reg_beliefs)
+            state_loss = F.mse_loss(pred_posterior_states, reg_posterior_states)
+            act_loss = F.mse_loss(pred_actions, reg_actions)
             regularizer_loss = belief_loss + state_loss + act_loss
             
             # Update model parameters
@@ -377,14 +403,13 @@ class Trainer():
             regularizer_loss.backward() # BACKPROPAGATION
             print("iterazione: ", i)
             print("loss: ", regularizer_loss)
-            #print("reg_cost: ", reg_cost)
             #print("belief_loss: ", belief_loss)
             #print("state_loss: ", state_loss)
             #print("act_loss: ", act_loss)
             nn.utils.clip_grad_norm_(self.param_list, self.parms.grad_clip_norm, norm_type=2)
             self.optimiser.step()
         print("Storing regularizer")
-        #torch.save({'regularizer': self.regularizer.state_dict()}, os.path.join(self.model_path, 'only_reg.pth'))
+        torch.save({'transition_model': self.transition_model.state_dict(), 'observation_model': self.observation_model.state_dict(), 'reward_model': self.reward_model.state_dict(), 'encoder': self.encoder.state_dict(), 'optimiser': self.optimiser.state_dict(), 'regularizer': self.regularizer.state_dict()}, os.path.join(self.model_path, 'nuovissimo_model.pth'))
         
         
         

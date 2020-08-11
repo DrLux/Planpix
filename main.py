@@ -13,7 +13,7 @@ class Initializer():
   def __init__(self):  
       self.parms = Parameters()
       self.results_dir = os.path.join(self.parms.results_path)
-      self.dataset_path = self.results_dir+'dataset' 
+      self.dataset_path = os.path.join(self.parms.results_path,'dataset/')  
       os.makedirs(self.dataset_path, exist_ok=True) 
       self.metrics = {'steps': [], 'episodes': [], 'train_rewards': [], 'predicted_rewards': [], 'test_episodes': [], 'test_rewards': [], 'observation_loss': [], 'reward_loss': [], 'kl_loss': [], 'regularizer_loss': []}
       
@@ -40,18 +40,18 @@ class Initializer():
       if self.parms.seed > 0: 
         self.set_seed()
 
-      #self.init_exp_rep()
+      self.init_exp_rep()
       ###############################################
       self.trainer = Trainer(self.parms,self.D,self.metrics,self.results_dir,self.env)
       
       # Load checkpoints
       self.trainer.load_checkpoints()
       print("Total training episodes: ", self.parms.training_episodes, " Buffer sampling: ", self.parms.collect_interval)
-      #self.trainer.train_models()
-      #self.D.store_dataset(self.dataset_path)
-      #self.D.load_dataset(self.results_dir)
+      self.trainer.train_models()
+      self.D.store_dataset(self.dataset_path+'dataset_prova')
+      #self.D.load_dataset(self.dataset_path)
       #self.trainer.train_regularizer()
-      self.trainer.test_model()
+      #self.trainer.test_model()
       #self.trainer.dump_plan_video()
 
       

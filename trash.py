@@ -1,11 +1,3 @@
-# il trainer lascialo a triplette
-# poi l' inferenza puoi farla in 2 modi
-## metodo chain: accumulo i 10 step del planning horizon in una sola riga -> [1000,446*10] -> cambia l' input della rete 
-## metodo triplette indipendenti: concateno tutto, gli faccio analizzare una tripletta alla volta e poi splitto -> [10000, 446]
-# parto con le triplette
-
-
-# lui addestra il reward model col posterior ma nel planner usa il prior.. da provare a cambiare
 ##################################################################################
 ######### DUMP PLAN
 

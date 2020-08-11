@@ -1,3 +1,4 @@
+import os
 
 class Parameters():
     def __init__(self):
@@ -5,7 +6,7 @@ class Parameters():
         self.gpu_id = 0
         self.seed = 2334
         self.num_init_episodes = 3
-        self.use_cuda = False
+        self.use_cuda = True
         #self.collect_interval = 10 
 
 
@@ -36,8 +37,8 @@ class Parameters():
         self.top_candidates = 100
 
         # Regularizer
-        self.reg_hidden_size = 160 
-        self.reg_num_hidden_layers = 1
+        self.reg_hidden_size = 600
+        self.reg_num_hidden_layers = 0
         self.noise_std = 0.3
 
         # Learning
@@ -62,3 +63,7 @@ class Parameters():
         self.grad_clip_norm = 1000
         self.test_interval = 20
         self.checkpoint_interval = 20
+
+        # os
+        self.results_dir = os.path.join(self.results_path)
+        self.dataset_path = os.path.join(self.results_path,'dataset/')
