@@ -35,7 +35,7 @@ class ExperienceReplay():
 
     def load_dataset(self,path):
         print("Loadign dataset from: ", path)
-        raw_data = np.load(path+"dataset_prova.npz", allow_pickle=True)
+        raw_data = np.load(path+"dump_dataset.npz", allow_pickle=True)
         prova = dict(raw_data)
         self.observations = raw_data['observations']
         self.actions = raw_data['actions']

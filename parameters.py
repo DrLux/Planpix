@@ -4,7 +4,7 @@ class Parameters():
     def __init__(self):
         # Parametri che cambio più frequentemente
         self.gpu_id = 0
-        self.seed = 2334
+        self.seed = 256
         self.num_init_episodes = 3
         self.use_cuda = True
         #self.collect_interval = 10 
@@ -42,10 +42,18 @@ class Parameters():
         self.noise_std = 0.3
 
         # Learning
-        self.activation_function = 'relu'
+        self.reg_adam_epsilon = 1e-4
+        self.reg_learning_rate_schedule = 0 #Linear learning rate schedule (optimisation steps from 0 to final learning rate; 0 to disable)' 
+        self.reg_learning_rate = 1e-3
+        self.reg_grad_clip_norm = 1000
+
+        self.adam_epsilon = 1e-4
         self.learning_rate_schedule = 0 #Linear learning rate schedule (optimisation steps from 0 to final learning rate; 0 to disable)' 
         self.learning_rate = 1e-3
-        self.adam_epsilon = 1e-4
+        self.grad_clip_norm = 1000
+        
+
+        self.activation_function = 'relu'
         self.device = None
         #self.use_cuda = False
         #self.gpu_id = 0
@@ -60,7 +68,6 @@ class Parameters():
         self.flag_render = False
         self.training_episodes = 602
         self.collect_interval = 100 #numero di campioni che peschi dal buffer ad ogni iterazione 
-        self.grad_clip_norm = 1000
         self.test_interval = 20
         self.checkpoint_interval = 20
 
