@@ -11,7 +11,7 @@ class Parameters():
 
 
         ### ENV ####
-        self.env_name = 'cheetah-run'
+        self.env_name = 'cartpole-balance'#'cheetah-run'
         self.max_episode_length = 1000
         self.bit_depth = 5
         
@@ -39,7 +39,7 @@ class Parameters():
         # Regularizer
         self.reg_hidden_size = 600
         self.reg_num_hidden_layers = 0
-        self.noise_std = 0.3
+        self.noise_std = 0.5
 
         # Learning
         self.reg_adam_epsilon = 1e-4
@@ -64,12 +64,12 @@ class Parameters():
         # Interactions with the environment
         self.free_nats = 3 # nella loss di KL invece di prendere il valore maggiore di distanza prende la media dei 3 valori 
         self.action_noise = 0.3
-        self.test_episodes = 1#3
+        self.test_episodes = 3
         self.flag_render = False
         self.training_episodes = 602
         self.collect_interval = 100 #numero di campioni che peschi dal buffer ad ogni iterazione 
-        self.test_interval = 20
-        self.checkpoint_interval = 20
+        self.test_interval = 10#20
+        self.checkpoint_interval = 10#20
 
         # os
         self.results_dir = os.path.join(self.results_path)

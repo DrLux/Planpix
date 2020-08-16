@@ -15,8 +15,7 @@ class Initializer():
       self.results_dir = os.path.join(self.parms.results_path)
       self.dataset_path = os.path.join(self.parms.results_path,'dataset/')  
       os.makedirs(self.dataset_path, exist_ok=True) 
-      self.metrics = {'steps': [], 'episodes': [], 'train_rewards': [], 'predicted_rewards': [], 'test_episodes': [], 'test_rewards': [], 'observation_loss': [], 'reward_loss': [], 'kl_loss': [], 'regularizer_loss': [], 'curiosity_loss': []}    
-
+      self.metrics = {'steps': [], 'episodes': [], 'train_rewards': [], 'predicted_rewards': [], 'test_episodes': [], 'test_rewards': [], 'observation_loss': [], 'reward_loss': [], 'kl_loss': [], 'regularizer_loss': []}    
       os.makedirs(self.results_dir, exist_ok=True) 
       
       ## set cuda 
@@ -52,7 +51,7 @@ class Initializer():
       #self.trainer.load_checkpoints()
       #self.trainer.load_regularizer()
       #self.trainer.train_regularizer()
-      #self.trainer.test_model()
+      self.trainer.test_model()
       #self.trainer.dump_plan_video()
       self.env.close()
       #print("END.")
