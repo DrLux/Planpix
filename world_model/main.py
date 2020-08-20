@@ -37,8 +37,9 @@ class Initializer():
 
       self.init_exp_rep()
       self.trainer = Trainer(self.parms,self.D,self.metrics,self.results_dir,self.env)
+      self.trainer.explore_and_collect()
+      #self.trainer.train_models()
       self.trainer.load_checkpoints()
-      self.trainer.train_models()
       self.env.close()
       
       # Load checkpoints

@@ -5,6 +5,8 @@ from torch.nn import functional as F
 from torch.nn import BatchNorm1d
 import math
 from torch.distributions.normal import Normal
+from torch.distributions.categorical import Categorical
+import numpy as np
 
 
 
@@ -86,32 +88,107 @@ class MDRNN(jit.ScriptModule):
         super().__init__()
         self.num_gaussians = num_gaussians
         self.rnn = nn.GRU(latent_size + action_size, rnn_hidden_size)
-        self.gmm_layer = nn.Linear(rnn_hidden_size, (2 * latent_size + 1) * num_gaussians + 2) # (mu,sigma,pi) for all gaussian + reward and done_flag prediction 
+        self.gmm_layer = nn.Linear(rnn_hidden_size, (((latent_size + 2) * num_gaussians) *2) + num_gaussians) # (mu,sigma,pi,rw,done) for all gaussian 
         self.latent_size = latent_size
-        self.size_mu_sigma = latent_size * num_gaussians
+        self.size_mu_sigma = (latent_size + 2) * num_gaussians
+
+    def get_prediction(self,mu,sigma,logpi):       
+        mixt = Categorical(torch.exp(logpi)).sample().item()
+        latent_mu, reward_mu, flag_mu = torch.split(mu[mixt,:],[self.latent_size,1,1], dim=-1)
+        latent_sigma, reward_sigma, flag_sigma = torch.split(sigma[mixt,:],[self.latent_size,1,1], dim=-1)
+            
+        next_obs = latent_mu  #+ latent_sigma #* torch.randn_like(mu[:, mixt, :])
+        next_reward = abs(reward_mu)  #+ abs(reward_sigma)
+        next_flag = flag_mu  #+ flag_sigma
+
+        next_reward = abs(next_reward)
+
+        if next_flag >= 0.5:
+            next_flag = 1
+        else:
+            next_flag = 0
+
+        return next_obs, next_reward,next_flag 
 
 
     @jit.script_method
-    def forward(self, actions, latents):
+    def forward(self, latents, actions):
+        single_step = False
+
+        if len(latents.shape) == len(actions.shape) and len(actions.shape) < 3:
+            latents = latents.unsqueeze(dim=0).unsqueeze(dim=0)
+            actions = actions.unsqueeze(dim=0).unsqueeze(dim=0)
+            single_step = True
+
         seq_len, bs = actions.size(0), actions.size(1)
         inputs = torch.cat([actions, latents], dim=-1)
-        outs,hideen = self.rnn(inputs)
+        outs,hidden = self.rnn(inputs)
         gmm_outs = self.gmm_layer(outs)
         
-        pred_mus,pred_sigmas,pred_pi,pred_rw, pred_done = torch.split(gmm_outs,[self.size_mu_sigma,self.size_mu_sigma, self.num_gaussians,1,1], dim=-1)
-        
-        pred_mus = pred_mus.view(seq_len, bs, self.num_gaussians, self.latent_size)
-        pred_sigmas = pred_sigmas.view(seq_len, bs, self.num_gaussians, self.latent_size)
-        pred_sigmas = torch.exp(pred_sigmas)
-        
+        pred_mus,pred_sigmas,pred_pi = torch.split(gmm_outs,[self.size_mu_sigma,self.size_mu_sigma, self.num_gaussians], dim=-1)
+        pred_mus = pred_mus.view(seq_len, bs, self.num_gaussians, self.latent_size+2)
+        pred_sigmas = pred_sigmas.view(seq_len, bs, self.num_gaussians, self.latent_size+2)
+        pred_sigmas = torch.exp(pred_sigmas) 
         pred_pi = pred_pi.view(seq_len, bs, self.num_gaussians)
         log_pred_pi = F.log_softmax(pred_pi, dim=-1)
+
+        if single_step:
+            pred_mus = pred_mus.squeeze(dim=0).squeeze(dim=0) 
+            pred_sigmas = pred_sigmas.squeeze(dim=0).squeeze(dim=0) 
+            log_pred_pi = log_pred_pi.squeeze(dim=0).squeeze(dim=0)        
+
+        return pred_mus, pred_sigmas, log_pred_pi 
+
+    #@jit.script_method
+    def get_multiple_prediction(self,mu,sigma,logpi):
+        mu = mu.squeeze(dim=0)
+        logpi = logpi.squeeze(dim=0)
+        sigma = sigma.squeeze(dim=0)
+        mixt = Categorical(torch.exp(logpi)).sample()
+
+        ######################
+        mixt = mixt.unsqueeze(dim=-1).unsqueeze(dim=-1)
+        arr = mu.cpu().numpy()
+        inds = mixt.cpu().numpy()
+        filtered_mu = np.take_along_axis(arr,inds,axis=1)
+        filtered_mu = torch.from_numpy(filtered_mu)
+        filtered_mu = filtered_mu.squeeze(dim=1)
+
+        #print("mu device: ", mu.device)
+        #print("filtered_mu: ", filtered_mu.shape)
+        #print("filtered_mu device: ", filtered_mu.device)
+        #assert 1 == 2
+        ##########################à
         
-        return pred_mus, pred_sigmas, log_pred_pi, pred_rw, pred_done    
+        '''
+        filtered_mu = torch.zeros([mu.size(0),mu.size(2)])
+        filtered_sigma = torch.zeros([sigma.size(0),sigma.size(2)])
+
+        for t in range(mixt.size(0)):
+            filtered_mu[t] = mu[t,mixt[t],:]
+            filtered_sigma[t] = sigma[t,mixt[t],:]
+        '''
+
+        latent_mu, reward_mu, flag_mu = torch.split(filtered_mu,[self.latent_size,1,1], dim=-1)
+        #latent_sigma, reward_sigma, flag_sigma = torch.split(filtered_sigma,[self.latent_size,1,1], dim=-1)
+                        
+        next_obs = latent_mu  #+ latent_sigma #* torch.randn_like(mu[:, mixt, :])
+        next_reward = abs(reward_mu)  #+ abs(reward_sigma)
+        next_flag = flag_mu  #+ flag_sigma
+
+        next_reward = abs(next_reward)
+
+        #if next_flag >= 0.5:
+        #    next_flag = 1
+        #else:
+        #    next_flag = 0
+
+        return next_obs, next_reward,next_flag 
     
     #@jit.script_method
-    def get_loss(self,pi,mu,sigma,pred_rw,pred_done,next_latent,rw,dn):
-        batch = next_latent.unsqueeze(-2)
+    def get_loss(self,pi,mu,sigma,next_latent,rw,dn):
+        batch = torch.cat([next_latent,rw,dn], dim=-1)
+        batch = batch.unsqueeze(-2)
 
         #Calculate  G = P(pred_mus, pred_sigmas)
         normal_dist = Normal(mu, sigma)
@@ -119,34 +196,31 @@ class MDRNN(jit.ScriptModule):
         g_log_probs = normal_dist.log_prob(batch)    
         
         gmm_loss = self.get_gmm_loss(pi,g_log_probs)
-        reward_loss = F.mse_loss(rw, pred_rw)
-        done_loss =  F.binary_cross_entropy_with_logits(dn, pred_done) 
-         
-        return gmm_loss,reward_loss, done_loss
+        return gmm_loss
 
         
 
     @jit.script_method
     def get_gmm_loss(self, logpi, g_log_probs):  
-        #logpi = logpi.unsqueeze(dim=-1)
+        logpi = logpi.unsqueeze(dim=-1)
         ###g_log_probs = torch.sum(g_log_probs, dim=-1)
-        #loss = g_log_probs + logpi
-        #loss = torch.sum(loss, dim=-1)
-        #return -torch.mean(loss)
+        loss = g_log_probs + logpi
+        loss = torch.sum(loss, dim=-1)
+        return -torch.mean(loss)
 
         # Version from: https://github.com/ctallec/world-models/blob/master/models/mdrnn.py
         # Less variance
-        logpi = logpi.unsqueeze(dim=-1)
+        #logpi = logpi.unsqueeze(dim=-1)
 
-        #g_log_probs = logpi + torch.sum(g_log_probs, dim=-1) # my edit, less variance and lower loss values
-        g_log_probs = logpi + g_log_probs
-        max_log_probs = torch.max(g_log_probs, dim=-1, keepdim=True)[0]
-        g_log_probs = g_log_probs - max_log_probs
+        ###g_log_probs = logpi + torch.sum(g_log_probs, dim=-1) # my edit, less variance and lower loss values
+        #g_log_probs = logpi + g_log_probs
+        #max_log_probs = torch.max(g_log_probs, dim=-1, keepdim=True)[0]
+        #g_log_probs = g_log_probs - max_log_probs
 
-        g_probs = torch.exp(g_log_probs)
-        probs = torch.sum(g_probs, dim=-1)
+        #g_probs = torch.exp(g_log_probs)
+        #probs = torch.sum(g_probs, dim=-1)
 
-        log_prob = max_log_probs.squeeze() + torch.log(probs)
-        return - torch.mean(log_prob)
+        #log_prob = max_log_probs.squeeze() + torch.log(probs)
+        #return - torch.mean(log_prob)
 
 

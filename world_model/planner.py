@@ -6,74 +6,66 @@ from torch import jit
 class MPCPlanner(jit.ScriptModule):
     __constants__ = ['action_size', 'planning_horizon', 'optimisation_iters', 'candidates', 'top_candidates', 'min_action', 'max_action']
 
-    def __init__(self, action_size, planning_horizon, optimisation_iters, candidates, top_candidates, transition_model, reward_model,min_action=-inf, max_action=inf):
+    def __init__(self, action_size, planning_horizon, optimisation_iters, candidates, top_candidates, mdrnn, vae, device,min_action=-inf, max_action=inf):
         super().__init__()
-        self.transition_model, self.reward_model = transition_model, reward_model
+        self.mdrnn = mdrnn
+        self.vae = vae 
         self.action_size, self.min_action, self.max_action = action_size, min_action, max_action
         self.planning_horizon = planning_horizon
         self.optimisation_iters = optimisation_iters
         self.candidates, self.top_candidates = candidates, top_candidates
+        self.device = device
 
-    @jit.script_method
-    def forward(self, belief, state, explore:bool):
-        B, H, Z = belief.size(0), belief.size(1), state.size(1)  #B is the batch size, H belief size, Z state size 
-        belief, state = belief.unsqueeze(dim=1).expand(B, self.candidates, H).reshape(-1, H), state.unsqueeze(dim=1).expand(B, self.candidates, Z).reshape(-1, Z)
+    #@jit.script_method
+    def get_action(self, current_obs, done_flag):
+        current_z = self.vae.encode(current_obs.to(device=self.device))
+        latent_size = current_z.size(1)
+        current_z = current_z.expand(self.candidates, latent_size)
+
+        predicted_z = torch.tensor([self.planning_horizon, self.candidates, latent_size]) #init prediction
 
         # Initialize factorized belief over action sequences q(a_t:t+H) ~ N(0, I)
-        action_mean, action_std_dev = torch.zeros(self.planning_horizon, B, 1, self.action_size, device=belief.device), torch.ones(self.planning_horizon, B, 1, self.action_size, device=belief.device)
-        beliefs = torch.tensor([self.planning_horizon, self.candidates, H])
-        states = torch.tensor([self.planning_horizon,self.candidates,Z])        
+        action_mean, action_std_dev = torch.zeros(self.planning_horizon, 1, self.action_size, device=self.device), torch.ones(self.planning_horizon, 1, self.action_size, device=self.device)   
         planned_actions = torch.tensor([self.planning_horizon,self.action_size])
-        mean_next_return = torch.tensor(B)
+        #mean_next_return = torch.tensor(B)
         
         for _ in range(self.optimisation_iters):
             # Evaluate J action sequences from the current belief (over entire sequence at once, batched over particles)
-            actions = (action_mean + action_std_dev * torch.randn(self.planning_horizon, B, self.candidates, self.action_size, device=action_mean.device)).view(self.planning_horizon, B * self.candidates, self.action_size)  # Sample actions (time x (batch x candidates) x actions)
+            actions = (action_mean + action_std_dev * torch.randn(self.planning_horizon, self.candidates, self.action_size, device=action_mean.device)) # Sample actions (time x candidates x actions)
             actions.clamp_(min=self.min_action, max=self.max_action)  # Clip action range
             # Sample next states
-            beliefs, states, _, _ = self.transition_model(state, actions, belief)
-
+            
             # Calculate expected returns (technically sum of rewards over planning horizon)
-            returns = self.reward_model(beliefs.view(-1, H), states.view(-1, Z)).view(self.planning_horizon, -1)
-            next_returns = returns[0,:]
-            summed_returns = returns.sum(dim=0)
+            #actions = [12, 1000, 1]
+            returns = self.evaluate_plan(current_z,actions,done_flag)
 
-            # Calculate regularization term
-            #if (not explore): #qui va messo NOT explore
-            #    reg_beliefs = beliefs.view(self.candidates,-1)
-            #    reg_states = states.view(self.candidates,-1)
-            #    reg_actions = actions.view(self.candidates,-1)
-            #    chunk = torch.cat([reg_beliefs,reg_states,reg_actions] , dim=1)
-            #    reg_cost = self.regularizer.compute_cost(chunk) 
-            #    summed_returns = summed_returns + (reg_cost * 0.0003)
-
+            
             # Re-fit belief to the K best action sequences
-            _, topk = summed_returns.reshape(B, self.candidates).topk(self.top_candidates, dim=1, largest=True, sorted=False) # topk = 100 indexes
-            topk += self.candidates * torch.arange(0, B, dtype=torch.int64, device=topk.device).unsqueeze(dim=1)  # Fix indices for unrolled actions
-            best_actions = actions[:, topk.view(-1)].reshape(self.planning_horizon, B, self.top_candidates, self.action_size)# take the best 100 actions (the final best action is the mean of them)
-            top_next_returns = next_returns[topk.view(-1)].reshape(B, self.top_candidates)
-
-            ##########################################################
-            # Questa parte va fuori dal loop 
-            ###### prepare belief and states
-
-            beliefs = beliefs[:, topk.view(-1)] #take 100 best beliefs
-            states = states[:, topk.view(-1)] #take 100 best states
-
-            ##### Get 1 of top 100 candated. three methods
-            #beliefs = beliefs[:,-1,:] 
-            beliefs = beliefs.mean(dim=1, keepdim=False) #usare questo
-
-            #states = states[:,-1,:]
-            states = states.mean(dim=1, keepdim=False) #usare questo
-            planned_actions = action_mean.squeeze(dim=1)
-            #######################################################
+            _, topk = returns.topk(self.top_candidates, dim=0, largest=True, sorted=False) # topk = 100 indexes
+            #topk += self.candidates * torch.arange(0, dtype=torch.int64, device=topk.device).unsqueeze(dim=1)  # Fix indices for unrolled actions
+            best_actions = actions[:, topk.view(-1)].reshape(self.planning_horizon, self.top_candidates, self.action_size)# take the best 100 actions (the final best action is the mean of them)
 
             # Update belief with new means and standard deviations
-            action_mean, action_std_dev = best_actions.mean(dim=2, keepdim=True), best_actions.std(dim=2, unbiased=False, keepdim=True)
-            mean_next_return = top_next_returns.mean(dim=1)
+            action_mean, action_std_dev = best_actions.mean(dim=1, keepdim=True), best_actions.std(dim=1, unbiased=False, keepdim=True)
             
+        print("finito")
+        assert 1 == 2
 
         # Return first action mean µ_t                    
-        return action_mean[0].squeeze(dim=1), beliefs, states,planned_actions,mean_next_return
+        #return action_mean[0].squeeze(dim=1)
         
+    def evaluate_plan(self, latent, actions,done_flag):
+        seq_len, candidates = actions.size(0), actions.size(1)
+        total_reward = torch.zeros([candidates,1])
+
+        for t in range(seq_len):
+            print("optim ", t)
+            latent = latent.unsqueeze(dim=0)
+            action = actions[t].unsqueeze(dim=0)
+            pred_mus, pred_sigmas, log_pred_pi = self.mdrnn.forward(latent,action) # -> lui è addestrato con 12,50,1025
+            latent, next_reward,next_flag = self.mdrnn.get_multiple_prediction(pred_mus, pred_sigmas, log_pred_pi)
+            latent = latent.to(device=self.device)
+            total_reward += next_reward
+
+        total_reward.to(device=self.device)
+        return total_reward
