@@ -15,7 +15,7 @@ class Initializer():
       self.results_dir = os.path.join(self.parms.results_path)
       self.dataset_path = os.path.join(self.parms.results_path,'dataset/')  
       os.makedirs(self.dataset_path, exist_ok=True) 
-      self.metrics = {'steps': [], 'episodes': [], 'train_rewards': [], 'predicted_rewards': [], 'test_episodes': [], 'test_rewards': [], 'vae_loss': [], 'reward_loss': [], 'kl_loss': [], 'regularizer_loss': []}    
+      self.metrics = {'steps': [], 'episodes': [], 'train_rewards': [], 'predicted_rewards': [], 'test_episodes': [], 'test_rewards': [], 'vae_loss': [], 'mdrnn_loss': [], 'rew_loss': [], 'done_loss': []}    
       os.makedirs(self.results_dir, exist_ok=True) 
       
       ## set cuda 
@@ -37,24 +37,12 @@ class Initializer():
 
       self.init_exp_rep()
       self.trainer = Trainer(self.parms,self.D,self.metrics,self.results_dir,self.env)
-      self.trainer.explore_and_collect()
-      #self.trainer.train_models()
-      self.trainer.load_checkpoints()
+      #self.trainer.explore_and_collect(1)
+      self.trainer.train_models()
+      #self.trainer.test_vae()
       self.env.close()
       
-      # Load checkpoints
-      #self.D.load_dataset(self.dataset_path)
-      #self.trainer.load_checkpoints()
-      #print("Total training episodes: ", self.parms.training_episodes, " Buffer sampling: ", self.parms.collect_interval)
-      #self.trainer.train_models()
-      #self.D.store_dataset(self.dataset_path+'dataset_prova')
-      #self.trainer.load_checkpoints()
-      #self.trainer.load_regularizer()
-      #self.trainer.train_regularizer()
-      #self.trainer.test_model()
-      #self.trainer.dump_plan_video()
-      #self.env.close()
-      #print("END.")
+     
       
 
 

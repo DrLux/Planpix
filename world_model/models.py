@@ -80,67 +80,52 @@ class VAE(jit.ScriptModule):
     def get_loss(self,recon_x, x):
         return F.mse_loss(recon_x, x)
 
-#Mixture Density Recurrent Neural Networks
-class MDRNN(jit.ScriptModule):
+'''
+class MDRNNcell(jit.ScriptModule):
     __constants__ = ['num_gaussians','size_mu_sigma','latent_size']
 
-    def __init__(self, latent_size, action_size, rnn_hidden_size, num_gaussians):
+    def __init__(self, latent_size, action_size, rnn_hidden_size,gmm_output_size, num_gaussians, min_action, max_action):
         super().__init__()
         self.num_gaussians = num_gaussians
-        self.rnn = nn.GRU(latent_size + action_size, rnn_hidden_size)
-        self.gmm_layer = nn.Linear(rnn_hidden_size, (((latent_size + 2) * num_gaussians) *2) + num_gaussians) # (mu,sigma,pi,rw,done) for all gaussian 
+        self.rnn = nn.LSTMCell(latent_size + action_size, rnn_hidden_size)
+        self.gmm_layer = nn.Linear(rnn_hidden_size, gmm_output_size) # (mu,sigma,pi,rw,done) for all gaussian 
         self.latent_size = latent_size
-        self.size_mu_sigma = (latent_size + 2) * num_gaussians
+        self.size_mu_sigma = latent_size * num_gaussians
+        self.min_action = min_action
+        self.max_action = max_action
+        self.rnn_hidden_size = rnn_hidden_size
 
-    def get_prediction(self,mu,sigma,logpi):       
-        mixt = Categorical(torch.exp(logpi)).sample().item()
-        latent_mu, reward_mu, flag_mu = torch.split(mu[mixt,:],[self.latent_size,1,1], dim=-1)
-        latent_sigma, reward_sigma, flag_sigma = torch.split(sigma[mixt,:],[self.latent_size,1,1], dim=-1)
-            
-        next_obs = latent_mu  #+ latent_sigma #* torch.randn_like(mu[:, mixt, :])
-        next_reward = abs(reward_mu)  #+ abs(reward_sigma)
-        next_flag = flag_mu  #+ flag_sigma
-
-        next_reward = abs(next_reward)
-
-        if next_flag >= 0.5:
-            next_flag = 1
-        else:
-            next_flag = 0
-
-        return next_obs, next_reward,next_flag 
-
-
-    @jit.script_method
+    #@jit.script_method
     def forward(self, latents, actions):
-        single_step = False
+        #print("latents: ",latents.shape)
+        #print("actions: ", actions.shape)
 
-        if len(latents.shape) == len(actions.shape) and len(actions.shape) < 3:
-            latents = latents.unsqueeze(dim=0).unsqueeze(dim=0)
-            actions = actions.unsqueeze(dim=0).unsqueeze(dim=0)
-            single_step = True
-
-        seq_len, bs = actions.size(0), actions.size(1)
         inputs = torch.cat([actions, latents], dim=-1)
-        outs,hidden = self.rnn(inputs)
-        gmm_outs = self.gmm_layer(outs)
+        inputs = inputs.squeeze(dim=0)
+        batch_size = inputs.size(0)
         
-        pred_mus,pred_sigmas,pred_pi = torch.split(gmm_outs,[self.size_mu_sigma,self.size_mu_sigma, self.num_gaussians], dim=-1)
-        pred_mus = pred_mus.view(seq_len, bs, self.num_gaussians, self.latent_size+2)
-        pred_sigmas = pred_sigmas.view(seq_len, bs, self.num_gaussians, self.latent_size+2)
+        
+        self.current_hidden_cell_state = 2 * [torch.zeros(batch_size, self.rnn_hidden_size).to(device=inputs.device)]
+        next_hidden, next_cell_state = self.rnn(inputs,self.current_hidden_cell_state)
+        self.current_hidden_cell_state = [next_hidden, next_cell_state]
+
+        gmm_outs = self.gmm_layer(next_hidden)
+
+        pred_mus,pred_sigmas,pred_pi,pred_rw,pred_flag = torch.split(gmm_outs,[self.size_mu_sigma,self.size_mu_sigma, self.num_gaussians,1,1], dim=-1)
+        pred_mus = pred_mus.view(-1, self.num_gaussians, self.latent_size)
+        pred_sigmas = pred_sigmas.view(-1, self.num_gaussians, self.latent_size)
         pred_sigmas = torch.exp(pred_sigmas) 
-        pred_pi = pred_pi.view(seq_len, bs, self.num_gaussians)
+        pred_pi = pred_pi.view(-1, self.num_gaussians)
         log_pred_pi = F.log_softmax(pred_pi, dim=-1)
 
-        if single_step:
-            pred_mus = pred_mus.squeeze(dim=0).squeeze(dim=0) 
-            pred_sigmas = pred_sigmas.squeeze(dim=0).squeeze(dim=0) 
-            log_pred_pi = log_pred_pi.squeeze(dim=0).squeeze(dim=0)        
+        pred_rw = torch.clamp(pred_rw, min=self.min_action, max=self.max_action).int()
+        pred_flag = torch.clamp(pred_flag, min=0, max=1)
 
-        return pred_mus, pred_sigmas, log_pred_pi 
+        return pred_mus, pred_sigmas, log_pred_pi, pred_rw,pred_flag 
 
     #@jit.script_method
     def get_multiple_prediction(self,mu,sigma,logpi):
+        
         mu = mu.squeeze(dim=0)
         logpi = logpi.squeeze(dim=0)
         sigma = sigma.squeeze(dim=0)
@@ -148,46 +133,71 @@ class MDRNN(jit.ScriptModule):
 
         ######################
         mixt = mixt.unsqueeze(dim=-1).unsqueeze(dim=-1)
-        arr = mu.cpu().numpy()
+        mu = mu.cpu().numpy()
+        #sigma = sigma.cpu().numpy()
         inds = mixt.cpu().numpy()
-        filtered_mu = np.take_along_axis(arr,inds,axis=1)
-        filtered_mu = torch.from_numpy(filtered_mu)
-        filtered_mu = filtered_mu.squeeze(dim=1)
 
-        #print("mu device: ", mu.device)
-        #print("filtered_mu: ", filtered_mu.shape)
-        #print("filtered_mu device: ", filtered_mu.device)
-        #assert 1 == 2
-        ##########################à
-        
-        '''
-        filtered_mu = torch.zeros([mu.size(0),mu.size(2)])
-        filtered_sigma = torch.zeros([sigma.size(0),sigma.size(2)])
+        latent_mu = np.take_along_axis(mu,inds,axis=1)
+        latent_mu = torch.from_numpy(latent_mu)
+        latent_mu = latent_mu.squeeze(dim=1)
 
-        for t in range(mixt.size(0)):
-            filtered_mu[t] = mu[t,mixt[t],:]
-            filtered_sigma[t] = sigma[t,mixt[t],:]
-        '''
-
-        latent_mu, reward_mu, flag_mu = torch.split(filtered_mu,[self.latent_size,1,1], dim=-1)
-        #latent_sigma, reward_sigma, flag_sigma = torch.split(filtered_sigma,[self.latent_size,1,1], dim=-1)
+        #latent_sigma = np.take_along_axis(sigma,inds,axis=1)
+        #latent_sigma = torch.from_numpy(latent_sigma)
+        #latent_sigma = latent_sigma.squeeze(dim=1)
                         
         next_obs = latent_mu  #+ latent_sigma #* torch.randn_like(mu[:, mixt, :])
-        next_reward = abs(reward_mu)  #+ abs(reward_sigma)
-        next_flag = flag_mu  #+ flag_sigma
 
-        next_reward = abs(next_reward)
+        return next_obs
+'''
 
-        #if next_flag >= 0.5:
-        #    next_flag = 1
-        #else:
-        #    next_flag = 0
+#Mixture Density Recurrent Neural Networks
+class MDRNN(jit.ScriptModule):
+    __constants__ = ['num_gaussians','size_mu_sigma','latent_size']
 
-        return next_obs, next_reward,next_flag 
+    def __init__(self, latent_size, action_size, rnn_hidden_size, gmm_output_size, num_gaussians, min_action, max_action):
+        super().__init__()
+        self.num_gaussians = num_gaussians
+        self.rnn = nn.LSTM(latent_size + action_size, rnn_hidden_size)
+        self.gmm_layer = nn.Linear(rnn_hidden_size, gmm_output_size) # (mu,sigma,pi,rw,done) for all gaussian 
+        self.latent_size = latent_size
+        self.size_mu_sigma = (latent_size) * num_gaussians
+        self.min_action = min_action
+        self.max_action = max_action
+
+    def get_prediction(self,mu,sigma,logpi):       
+        mixt = Categorical(torch.exp(logpi)).sample().item()
+        latent_mu = torch.split(mu[mixt,:],[self.latent_size], dim=-1)
+        latent_sigma = torch.split(sigma[mixt,:],[self.latent_size], dim=-1)
+            
+        next_obs = latent_mu  #+ latent_sigma #* torch.randn_like(mu[:, mixt, :])
+
+        return next_obs
+
+    @jit.script_method
+    def forward(self, latents, actions):
+        single_step = False
+
+        seq_len, bs = actions.size(0), actions.size(1)
+        inputs = torch.cat([actions, latents], dim=-1)
+        outs,(hn, cn) = self.rnn(inputs) 
+        gmm_outs = self.gmm_layer(outs) ### -< se qui mettessi hn?
+        
+        pred_mus,pred_sigmas,pred_pi,pred_rw,pred_flag = torch.split(gmm_outs,[self.size_mu_sigma,self.size_mu_sigma, self.num_gaussians,1,1], dim=-1)
+        pred_mus = pred_mus.view(seq_len, bs, self.num_gaussians, self.latent_size)
+        pred_sigmas = pred_sigmas.view(seq_len, bs, self.num_gaussians, self.latent_size)
+        pred_sigmas = torch.exp(pred_sigmas) 
+        pred_pi = pred_pi.view(seq_len, bs, self.num_gaussians)
+        log_pred_pi = F.log_softmax(pred_pi, dim=-1)
+
+        pred_rw = torch.clamp(pred_rw, min=self.min_action, max=self.max_action).int()
+        pred_rw = pred_rw.squeeze(dim=0)
+        pred_flag = torch.clamp(pred_flag, min=0, max=1)
+
+        return pred_mus, pred_sigmas, log_pred_pi, pred_rw,pred_flag     
     
     #@jit.script_method
-    def get_loss(self,pi,mu,sigma,next_latent,rw,dn):
-        batch = torch.cat([next_latent,rw,dn], dim=-1)
+    def get_loss(self,pi,mu,sigma,next_latent):
+        batch = torch.cat([next_latent], dim=-1)
         batch = batch.unsqueeze(-2)
 
         #Calculate  G = P(pred_mus, pred_sigmas)
@@ -223,4 +233,28 @@ class MDRNN(jit.ScriptModule):
         #log_prob = max_log_probs.squeeze() + torch.log(probs)
         #return - torch.mean(log_prob)
 
+    #@jit.script_method
+    def get_multiple_prediction(self,mu,sigma,logpi):
+        
+        mu = mu.squeeze(dim=0)
+        logpi = logpi.squeeze(dim=0)
+        sigma = sigma.squeeze(dim=0)
+        mixt = Categorical(torch.exp(logpi)).sample()
 
+        ######################
+        mixt = mixt.unsqueeze(dim=-1).unsqueeze(dim=-1)
+        mu = mu.cpu().numpy()
+        #sigma = sigma.cpu().numpy()
+        inds = mixt.cpu().numpy()
+
+        latent_mu = np.take_along_axis(mu,inds,axis=1)
+        latent_mu = torch.from_numpy(latent_mu)
+        latent_mu = latent_mu.squeeze(dim=1)
+
+        #latent_sigma = np.take_along_axis(sigma,inds,axis=1)
+        #latent_sigma = torch.from_numpy(latent_sigma)
+        #latent_sigma = latent_sigma.squeeze(dim=1)
+                        
+        next_obs = latent_mu  #+ latent_sigma #* torch.randn_like(mu[:, mixt, :])
+
+        return next_obs

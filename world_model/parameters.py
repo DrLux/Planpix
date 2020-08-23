@@ -5,7 +5,7 @@ class Parameters():
         # Parametri che cambio più frequentemente
         self.gpu_id = 0
         self.seed = 256
-        self.num_init_episodes = 3
+        self.num_init_episodes = 10
         self.use_cuda = True
         #self.collect_interval = 10 
 
@@ -19,12 +19,15 @@ class Parameters():
         self.ex_replay_buff_size = 1000000
         
         # Setup
-        self.results_path = '/home/luca/Desktop/luca/agosto_world_model/'
+        self.results_path = '/home/luca/Desktop/luca/agosto_world_model/con_gauss_noise'
 
         # Model Parameters
         self.latent_size = 1024
-        self.rnn_hidden_size = 256
-        self.num_gaussians = 5
+        self.rnn_hidden_size = 1026
+        self.num_gaussians = 3
+        self.gmm_output_size = ((self.latent_size * self.num_gaussians) *2) + self.num_gaussians + 2
+        self.reward_model_hidden_size = 200
+        self.sotchastic_state_size = 1026
         
 
         # Planner
@@ -48,10 +51,9 @@ class Parameters():
         self.action_noise = 0.3
         self.test_episodes = 3
         self.flag_render = False
-        self.training_episodes = 5
+        self.training_episodes = 1000
         self.collect_interval = 100 #numero di campioni che peschi dal buffer ad ogni iterazione 
-        self.test_interval = 10
-        self.checkpoint_interval = 10
+        self.test_interval = 20
 
         # os
         self.results_dir = os.path.join(self.results_path)

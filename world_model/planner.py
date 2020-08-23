@@ -37,35 +37,37 @@ class MPCPlanner(jit.ScriptModule):
             
             # Calculate expected returns (technically sum of rewards over planning horizon)
             #actions = [12, 1000, 1]
-            returns = self.evaluate_plan(current_z,actions,done_flag)
+            returns,next_z = self.evaluate_plan(current_z,actions,done_flag)
 
             
             # Re-fit belief to the K best action sequences
             _, topk = returns.topk(self.top_candidates, dim=0, largest=True, sorted=False) # topk = 100 indexes
+            
             #topk += self.candidates * torch.arange(0, dtype=torch.int64, device=topk.device).unsqueeze(dim=1)  # Fix indices for unrolled actions
             best_actions = actions[:, topk.view(-1)].reshape(self.planning_horizon, self.top_candidates, self.action_size)# take the best 100 actions (the final best action is the mean of them)
-
+            next_z = next_z[topk.view(-1)[0]]
+            
             # Update belief with new means and standard deviations
             action_mean, action_std_dev = best_actions.mean(dim=1, keepdim=True), best_actions.std(dim=1, unbiased=False, keepdim=True)
             
-        print("finito")
-        assert 1 == 2
+        return action_mean[0].squeeze(dim=1).cpu(),next_z
 
         # Return first action mean µ_t                    
         #return action_mean[0].squeeze(dim=1)
         
     def evaluate_plan(self, latent, actions,done_flag):
         seq_len, candidates = actions.size(0), actions.size(1)
-        total_reward = torch.zeros([candidates,1])
+        total_reward = torch.zeros([candidates,1]).to(device=self.device)
+        next_frames = None
 
         for t in range(seq_len):
-            print("optim ", t)
             latent = latent.unsqueeze(dim=0)
             action = actions[t].unsqueeze(dim=0)
-            pred_mus, pred_sigmas, log_pred_pi = self.mdrnn.forward(latent,action) # -> lui è addestrato con 12,50,1025
-            latent, next_reward,next_flag = self.mdrnn.get_multiple_prediction(pred_mus, pred_sigmas, log_pred_pi)
-            latent = latent.to(device=self.device)
+            pred_mus, pred_sigmas, log_pred_pi,next_reward,next_flag = self.mdrnn.forward(latent,action)
+            latent = self.mdrnn.get_multiple_prediction(pred_mus, pred_sigmas, log_pred_pi)
+            latent = latent.to(device=self.device)   
             total_reward += next_reward
+            if (t == 0):
+                next_frames = latent
 
-        total_reward.to(device=self.device)
-        return total_reward
+        return total_reward,next_frames
