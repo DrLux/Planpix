@@ -29,12 +29,12 @@ class DDPG(object):
         self.num_actions = self.action_space.shape[0]
 
         # Define the actor
-        self.actor = Actor(hidden_size, num_inputs, self.num_actions).to(device)
-        self.actor_target = Actor(hidden_size, num_inputs, self.num_actions).to(device)
+        self.actor = Actor(num_inputs, self.num_actions).to(device)
+        self.actor_target = Actor(num_inputs, self.num_actions).to(device)
 
         # Define the critic
-        self.critic = Critic(hidden_size, num_inputs, self.num_actions).to(device)
-        self.critic_target = Critic(hidden_size, num_inputs, self.num_actions).to(device)
+        self.critic = Critic(num_inputs, self.num_actions).to(device)
+        self.critic_target = Critic(num_inputs, self.num_actions).to(device)
 
         # Define the optimizers for both networks
         self.actor_optimizer  = Adam(self.actor.parameters(),  lr=1e-4,   weight_decay=0.005)  # optimizer for the actor network
@@ -63,16 +63,6 @@ class DDPG(object):
         return mu
 
     def update_params(self, batch):
-        """
-        Updates the parameters/networks of the agent according to the given batch.
-        This means we ...
-            1. Compute the targets
-            2. Update the Q-function/critic by one step of gradient descent
-            3. Update the policy/actor by one step of gradient ascent
-            4. Update the target networks through a soft update
-        Arguments:
-            batch:  Batch to perform the training of the parameters
-        """
         # Get tensors from the batch
         state_batch = torch.cat(batch.state).to(self.device)
         action_batch = torch.cat(batch.action).to(self.device)
