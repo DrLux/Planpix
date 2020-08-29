@@ -5,7 +5,6 @@ import numpy as np
 import torch
 from memory import ReplayMemory,Transition
 from ddpg import *
-from utils import lineplot, write_video, double_lineplot
 import matplotlib.pyplot as plt
 
 
@@ -15,7 +14,7 @@ class Initializer():
         self.use_cuda = True
         self.replay_size = 1000000
         self.gamma = 0.99
-        self.tau = 0.001
+        self.tau = 1e-3
         self.hidden_size = [400, 300]
         self.device = torch.device('cuda')
         self.max_iters = 10000000
@@ -24,9 +23,11 @@ class Initializer():
     
     def start(self):
         self.set_seed()
-        env = CustomEnv('HalfCheetah-v2', 2, 1000) 
-
-        self.agent = DDPG(self.gamma, self.tau,self.hidden_size,env.state_space(),env.action_space(),self.device)
+        #env = CustomEnv('HalfCheetah-v2', 2, 1000) 
+        #control_env = ControlSuite('cheetah-run', 2, 1000)
+        env = ControlSuite('cheetah-run', 2, 1000)
+        
+        self.agent = DDPG(self.gamma, self.tau,self.hidden_size,env.state_space(),env,self.device)
         # Initialize replay memory
         memory = ReplayMemory(int(self.replay_size))
 
@@ -42,7 +43,7 @@ class Initializer():
 
             while not done:
                 step += 1
-                action = self.agent.get_action(state)
+                action = self.agent.get_action(state,iter)
                 next_state, reward, done, _ = env.step(action.cpu().numpy()[0])
 
                 mask = torch.Tensor([done]).to(self.device)
@@ -61,6 +62,10 @@ class Initializer():
 
                     # Update actor and critic according to the batch
                     value_loss, policy_loss = self.agent.update_params(batch)
+            
+                if (step%100) == 0:
+                    self.agent.hard_swap()
+
             print("iter: ", iter, " total_reward: ", total_reward)
             list_iter.append(iter)
             list_total_rewards.append(total_reward.cpu())

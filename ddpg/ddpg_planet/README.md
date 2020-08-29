@@ -1,2 +1,0 @@
-# planpix
-master thesis

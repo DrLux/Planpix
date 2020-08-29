@@ -3,6 +3,8 @@ import logging
 import os
 import torch
 from models import *
+from noise import OrnsteinUhlenbeckActionNoise
+
 
 import torch.nn.functional as F
 from torch.optim import Adam
@@ -20,13 +22,14 @@ def hard_update(target, source):
 
 class DDPG(object):
 
-    def __init__(self, gamma, tau, hidden_size, num_inputs, action_space, device, checkpoint_dir=None):
+    def __init__(self, gamma, tau, hidden_size, num_inputs, env,device, checkpoint_dir=None):
 
         self.gamma = gamma
         self.tau = tau
-        self.action_space = action_space
+        self.min_action,self.max_action = env.action_range()
         self.device = device
-        self.num_actions = self.action_space.shape[0]
+        self.num_actions = env.action_space()
+        self.noise_stddev = 0.3
 
         # Define the actor
         self.actor = Actor(num_inputs, self.num_actions).to(device)
@@ -37,14 +40,16 @@ class DDPG(object):
         self.critic_target = Critic(num_inputs, self.num_actions).to(device)
 
         # Define the optimizers for both networks
-        self.actor_optimizer  = Adam(self.actor.parameters(),  lr=1e-4,   weight_decay=0.005)  # optimizer for the actor network
-        self.critic_optimizer = Adam(self.critic.parameters(),lr=1e-3, weight_decay=0.005)  # optimizer for the critic network
+        self.actor_optimizer  = Adam(self.actor.parameters(),  lr=1e-4 )                          # optimizer for the actor network
+        self.critic_optimizer = Adam(self.critic.parameters(), lr=1e-4,   weight_decay=0.002)  # optimizer for the critic network
 
-        # Make sure both targets are with the same weight
-        hard_update(self.actor_target, self.actor)
-        hard_update(self.critic_target, self.critic)
+        self.hard_swap()
 
-    def get_action(self, state, action_noise=None):
+        self.ou_noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(self.num_actions),
+                                            sigma=float(self.noise_stddev) * np.ones(self.num_actions))
+        self.ou_noise.reset()
+
+    def get_action(self, state, episode, action_noise=None):
         x = state.to(self.device)
 
         # Get the continous action value to perform in the env
@@ -55,10 +60,12 @@ class DDPG(object):
 
         # During training we add noise for exploration
         if action_noise is not None:
-            mu = action + torch.randn_like(action)  # Add exploration noise ε ~ p(ε) to the action. Do not use OU noise (https://spinningup.openai.com/en/latest/algorithms/ddpg.html)
+            noise = torch.Tensor(self.ou_noise.noise()).to(device) * 1.0/(1.0 + 0.005*episode)
+            #mu = action + torch.randn_like(action)  # Add exploration noise ε ~ p(ε) to the action. Do not use OU noise (https://spinningup.openai.com/en/latest/algorithms/ddpg.html)
+            mu = action + noise  # Add exploration noise ε ~ p(ε) to the action. Do not use OU noise (https://spinningup.openai.com/en/latest/algorithms/ddpg.html)
 
         # Clip the output according to the action space of the env
-        mu = mu.clamp(self.action_space.low[0], self.action_space.high[0])
+        mu = mu.clamp(self.min_action,self.max_action)
 
         return mu
 
@@ -91,10 +98,17 @@ class DDPG(object):
         policy_loss = -self.critic(state_batch, self.actor(state_batch))
         policy_loss = policy_loss.mean()
         policy_loss.backward()
+        for param in self.actor.parameters():
+                param.grad.data.clamp_(-1, 1)
         self.actor_optimizer.step()
 
-        # Update the target networks
+       # Update the target networks
         soft_update(self.actor_target, self.actor, self.tau)
         soft_update(self.critic_target, self.critic, self.tau)
 
         return value_loss.item(), policy_loss.item()
+    
+    def hard_swap(self):
+        # Make sure both targets are with the same weight
+        hard_update(self.actor_target, self.actor)
+        hard_update(self.critic_target, self.critic)
