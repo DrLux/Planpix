@@ -4,6 +4,7 @@ import os
 import torch
 from models import *
 from noise import OrnsteinUhlenbeckActionNoise
+import os
 
 
 import torch.nn.functional as F
@@ -22,26 +23,30 @@ def hard_update(target, source):
 
 class DDPG(object):
 
-    def __init__(self, gamma, tau, hidden_size, num_inputs, env,device, checkpoint_dir=None):
+    def __init__(self,env,parms):
 
-        self.gamma = gamma
-        self.tau = tau
+        self.gamma = parms.gamma
+        self.tau = parms.tau
         self.min_action,self.max_action = env.action_range()
-        self.device = device
+        self.device = parms.device
         self.num_actions = env.action_space()
-        self.noise_stddev = 0.3
+        self.size_state = env.state_space()
+        self.noise_stddev = parms.noise_stddev
+        self.checkpoint_path = parms.checkpoint_dir
+ 
+         
 
         # Define the actor
-        self.actor = Actor(num_inputs, self.num_actions).to(device)
-        self.actor_target = Actor(num_inputs, self.num_actions).to(device)
+        self.actor = Actor(self.size_state, self.num_actions).to(self.device)
+        self.actor_target = Actor(self.size_state, self.num_actions).to(self.device)
 
         # Define the critic
-        self.critic = Critic(num_inputs, self.num_actions).to(device)
-        self.critic_target = Critic(num_inputs, self.num_actions).to(device)
+        self.critic = Critic(self.size_state, self.num_actions).to(self.device)
+        self.critic_target = Critic(self.size_state, self.num_actions).to(self.device)
 
         # Define the optimizers for both networks
-        self.actor_optimizer  = Adam(self.actor.parameters(),  lr=1e-4 )                          # optimizer for the actor network
-        self.critic_optimizer = Adam(self.critic.parameters(), lr=1e-4,   weight_decay=0.002)  # optimizer for the critic network
+        self.actor_optimizer  = Adam(self.actor.parameters(),  lr=parms.actor_lr )                          # optimizer for the actor network
+        self.critic_optimizer = Adam(self.critic.parameters(), lr=parms.critic_lr,   weight_decay=parms.weight_decay)  # optimizer for the critic network
 
         self.hard_swap()
 
@@ -49,7 +54,7 @@ class DDPG(object):
                                             sigma=float(self.noise_stddev) * np.ones(self.num_actions))
         self.ou_noise.reset()
 
-    def get_action(self, state, episode, action_noise=None):
+    def get_action(self, state, episode, action_noise=True):
         x = state.to(self.device)
 
         # Get the continous action value to perform in the env
@@ -59,10 +64,12 @@ class DDPG(object):
         mu = mu.data
 
         # During training we add noise for exploration
-        if action_noise is not None:
-            noise = torch.Tensor(self.ou_noise.noise()).to(device) * 1.0/(1.0 + 0.005*episode)
-            #mu = action + torch.randn_like(action)  # Add exploration noise ε ~ p(ε) to the action. Do not use OU noise (https://spinningup.openai.com/en/latest/algorithms/ddpg.html)
-            mu = action + noise  # Add exploration noise ε ~ p(ε) to the action. Do not use OU noise (https://spinningup.openai.com/en/latest/algorithms/ddpg.html)
+        if action_noise:
+            noise = torch.Tensor(self.ou_noise.noise()).to(self.device) * 1.0/(1.0 + 0.005*episode)
+        else:
+            noise = 0
+            
+        mu += noise  
 
         # Clip the output according to the action space of the env
         mu = mu.clamp(self.min_action,self.max_action)
@@ -112,3 +119,25 @@ class DDPG(object):
         # Make sure both targets are with the same weight
         hard_update(self.actor_target, self.actor)
         hard_update(self.critic_target, self.critic)
+
+    def store_model(self):
+        print("Storing model at: ", self.checkpoint_path)
+        checkpoint = {
+            'actor': self.actor.state_dict(),
+            'actor_optim': self.actor_optimizer.state_dict(),
+            'critic': self.critic.state_dict(),
+            'criti_optim': self.critic_optimizer.state_dict()
+        }
+        torch.save(checkpoint, os.path.join(self.checkpoint_path, 'checkpoint.pth') )
+
+    def load_model(self):
+        files = os.listdir(self.checkpoint_path)
+        if files:
+            print("Loading models checkpoints!")
+            model_dicts = torch.load(os.path.join(self.checkpoint_path, 'checkpoint.pth'),map_location=self.device)
+            self.actor.load_state_dict(model_dicts['actor'])
+            self.actor_optimizer.load_state_dict(model_dicts['actor_optim'])
+            self.critic.load_state_dict(model_dicts['critic'])
+            self.critic_optimizer.load_state_dict(model_dicts['criti_optim'])
+        else:
+            print("Checkpoints not found!")
