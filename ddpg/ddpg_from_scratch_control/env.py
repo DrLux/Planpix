@@ -50,15 +50,11 @@ class ControlSuite():
         return np.random.uniform(action.minimum, action.maximum, action.shape)
 
     def step(self,action):
-        self.t += 1
         step = self._env.step(action)
         state = np.concatenate([np.asarray([obs]) if isinstance(obs, float) else obs for obs in step.observation.values()], axis=0)  
         reward = step.reward
-        discount = step.discount
         done = step.last()
-        if self.t >= self.max_episode_length:
-            done = True
-            self.t = 0
+        discount = step.discount
         return state,reward,done, discount        
     
     def action_range(self):

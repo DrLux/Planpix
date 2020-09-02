@@ -4,7 +4,6 @@ import os
 import torch
 from models import *
 from noise import OrnsteinUhlenbeckActionNoise
-import os
 
 
 import torch.nn.functional as F
@@ -23,36 +22,49 @@ def hard_update(target, source):
 
 class DDPG(object):
 
-    def __init__(self,env,parms):
+    def __init__(self, gamma, tau,num_inputs, env,device, checkpoint_dir=None):
 
-        self.gamma = parms.gamma
-        self.tau = parms.tau
+        self.gamma = gamma
+        self.tau = tau
         self.min_action,self.max_action = env.action_range()
-        self.device = parms.device
+        self.device = device
         self.num_actions = env.action_space()
-        self.size_state = env.state_space()
-        self.noise_stddev = parms.noise_stddev
-        self.checkpoint_path = parms.checkpoint_dir
- 
-         
+        self.noise_stddev = 0.3
+
+        self.results_path = '/home/luca/Desktop/luca/ddpg/'
+        self.checkpoint_path = os.path.join(self.results_path, 'checkpoint/')
+        os.makedirs(self.checkpoint_path, exist_ok=True)
 
         # Define the actor
-        self.actor = Actor(self.size_state, self.num_actions).to(self.device)
-        self.actor_target = Actor(self.size_state, self.num_actions).to(self.device)
+        self.actor = Actor(num_inputs, self.num_actions).to(device)
+        self.actor_target = Actor(num_inputs, self.num_actions).to(device)
 
         # Define the critic
-        self.critic = Critic(self.size_state, self.num_actions).to(self.device)
-        self.critic_target = Critic(self.size_state, self.num_actions).to(self.device)
+        self.critic = Critic(num_inputs, self.num_actions).to(device)
+        self.critic_target = Critic(num_inputs, self.num_actions).to(device)
 
         # Define the optimizers for both networks
-        self.actor_optimizer  = Adam(self.actor.parameters(),  lr=parms.actor_lr )                          # optimizer for the actor network
-        self.critic_optimizer = Adam(self.critic.parameters(), lr=parms.critic_lr,   weight_decay=parms.weight_decay)  # optimizer for the critic network
+        self.actor_optimizer  = Adam(self.actor.parameters(),  lr=1e-4 )                          # optimizer for the actor network
+        self.critic_optimizer = Adam(self.critic.parameters(), lr=1e-4,   weight_decay=0.002)  # optimizer for the critic network
 
         self.hard_swap()
 
         self.ou_noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(self.num_actions),
                                             sigma=float(self.noise_stddev) * np.ones(self.num_actions))
         self.ou_noise.reset()
+
+    def eval_mode(self):
+        self.actor.eval()
+        self.actor_target.eval()
+        self.critic_target.eval()
+        self.critic.eval()
+
+    def train_mode(self):
+        self.actor.train()
+        self.actor_target.train()
+        self.critic_target.train()
+        self.critic.train()
+
 
     def get_action(self, state, episode, action_noise=True):
         x = state.to(self.device)
@@ -65,11 +77,9 @@ class DDPG(object):
 
         # During training we add noise for exploration
         if action_noise:
-            noise = torch.Tensor(self.ou_noise.noise()).to(self.device) * 1.0/(1.0 + 0.005*episode)
-        else:
-            noise = 0
-            
-        mu += noise  
+            noise = torch.Tensor(self.ou_noise.noise()).to(self.device) * 1.0/(1.0 + 0.1*episode)
+            noise = noise.clamp(0,0.1)
+            mu = mu + noise  # Add exploration noise ε ~ p(ε) to the action. Do not use OU noise (https://spinningup.openai.com/en/latest/algorithms/ddpg.html)
 
         # Clip the output according to the action space of the env
         mu = mu.clamp(self.min_action,self.max_action)
