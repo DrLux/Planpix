@@ -20,29 +20,29 @@ class Initializer():
         self.device = torch.device('cuda')
         self.max_iters = 10000000
         self.batch_size = 64
-        self.results_path = '/home/luca/Desktop/luca/ddpg_noise/'
+        self.results_path = '/home/luca/Desktop/luca/ddpg_feature_vector/'
         self.statistic_dir = os.path.join(self.results_path, 'statistics/')
 
         #if folder do not exists, create it
         os.makedirs(self.statistic_dir, exist_ok=True)
 
-        self.metrics = {'steps': [], 'episodes': [], 'train_rewards': [], 'test_rewards': [], 'actor_loss': [], 'critic_loss': []} 
+        self.metrics = {'steps': [], 'episodes': [], 'train_rewards': [], 'test_rewards': [], 'actor_loss': [], 'critic_loss': [], 'test_episodes': []} 
         
 
     
     def start(self):
         self.set_seed()
         self.env = ControlSuite('cheetah-run', 2, 1000)
-        self.max_iters = 100000
+        self.max_iters = 110001
         
-        self.agent = DDPG(self.gamma, self.tau,self.env.state_space(),self.env,self.device)
+        self.agent = DDPG(self.gamma, self.tau,self.env.state_space(),self.env,self.device, self.results_path)
         # Initialize replay memory
         self.memory = ReplayMemory(int(self.replay_size))
         self.list_total_rewards = []
         self.list_iter = []
         self.step = 0
         self.current_episode = 0
-        self.checkpoint_interval = 3
+        self.checkpoint_interval = 100
         self.train()
 
     
@@ -51,15 +51,15 @@ class Initializer():
             self.metrics['episodes'].append(self.current_episode)
             self.explore_and_collect(self.current_episode)
 
-            if (self.current_episode % self.checkpoint_interval) == 0 and (self.current_episode > 0) :
+            if (self.current_episode % self.checkpoint_interval) == 0:
                 self.test(self.current_episode)
-            #    self.save_checkpoint()
+                self.save_checkpoint()
 
             self.current_episode += 1
     
 
     def explore_and_collect(self, iter):
-        state = torch.Tensor([self.env.reset()]).to(self.device)
+        state = torch.Tensor([self.env.reset()]).cpu()
         done = False
         total_reward = 0
 
@@ -71,7 +71,7 @@ class Initializer():
 
             mask = torch.Tensor([done]).to(self.device)
             reward = torch.Tensor([reward]).to(self.device)
-            next_state = torch.Tensor([next_state]).to(self.device)
+            next_state = torch.Tensor([next_state]).cpu()
             total_reward += reward
 
             self.memory.push(state, action, mask, next_state, reward)
@@ -83,12 +83,12 @@ class Initializer():
             if (self.step%100) == 0:
                 self.agent.hard_swap()
 
-        print("iter: ", iter, " total_reward: ", total_reward)
-        self.list_iter.append(iter)
-        self.list_total_rewards.append(total_reward.cpu())
-        plt.plot(self.list_iter, self.list_total_rewards)
-        plt.show()
-        plt.savefig('reward.png')
+        #print("iter: ", iter, " total_reward: ", total_reward)
+        #self.list_iter.append(iter)
+        #self.list_total_rewards.append(total_reward.cpu())
+        #plt.plot(self.list_iter, self.list_total_rewards)
+        #plt.show()
+        #plt.savefig('reward.png')
         self.metrics['train_rewards'].append(total_reward.item())
         self.lineplot(self.metrics['episodes'][-len(self.metrics['train_rewards']):], self.metrics['train_rewards'], 'train_rewards', self.statistic_dir)
         self.lineplot(self.metrics['episodes'][-len(self.metrics['actor_loss']):], self.metrics['actor_loss'], 'actor_loss', self.statistic_dir)
@@ -116,8 +116,7 @@ class Initializer():
         self.metrics['critic_loss'].append(critic_loss)
 
     def test(self, episode):
-        #sself.agent.eval_mode()
-
+        
         state = self.env.reset()
         state = torch.Tensor([state]).to(self.device)
         total_reward = 0
@@ -137,7 +136,8 @@ class Initializer():
         print("Result of test: ", total_reward)
         #self.agent.train_mode()
         self.metrics['test_rewards'].append(total_reward.item())
-        self.lineplot(self.metrics['episodes'][-len(self.metrics['test_rewards']):], self.metrics['test_rewards'], 'test_rewards', self.statistic_dir)
+        self.metrics['test_episodes'].append(episode)
+        self.lineplot(self.metrics['test_episodes'][-len(self.metrics['test_rewards']):], self.metrics['test_rewards'], 'test_rewards', self.statistic_dir)
 
 
     # Plots min, max and mean + standard deviation bars of a population over time

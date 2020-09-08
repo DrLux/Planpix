@@ -22,7 +22,7 @@ def hard_update(target, source):
 
 class DDPG(object):
 
-    def __init__(self, gamma, tau,num_inputs, env,device, checkpoint_dir=None):
+    def __init__(self, gamma, tau,num_inputs, env,device, results_path=None):
 
         self.gamma = gamma
         self.tau = tau
@@ -31,7 +31,7 @@ class DDPG(object):
         self.num_actions = env.action_space()
         self.noise_stddev = 0.3
 
-        self.results_path = '/home/luca/Desktop/luca/ddpg/'
+        self.results_path = self.results_path
         self.checkpoint_path = os.path.join(self.results_path, 'checkpoint/')
         os.makedirs(self.checkpoint_path, exist_ok=True)
 
