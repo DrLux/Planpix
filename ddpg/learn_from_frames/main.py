@@ -34,19 +34,6 @@ class Initializer():
         self.set_seed()
         self.env = ControlSuite('cheetah-run', 2, 1000, 3)
 
-        #######
-
-        #self.env.reset()
-        #done = False
-        #for i in range(1000):
-        #    state,rew,done,_ = self.env.step(self.env.sample_random_action())
-        #    print(i)
-        #    if done: break
-        #print(state.shape)
-        #assert 1 == 2
-
-        #######
-
         self.max_iters = 100000
         
         self.agent = DDPG(self.gamma, self.tau,self.env.state_space(),self.env,self.device)
@@ -56,7 +43,7 @@ class Initializer():
         self.list_iter = []
         self.step = 0
         self.current_episode = 0
-        self.checkpoint_interval = 3
+        self.checkpoint_interval = 200
         self.train()
 
     
