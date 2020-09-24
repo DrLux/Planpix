@@ -1,5 +1,8 @@
 import random
 from collections import namedtuple
+import numpy as np
+#from torchvision import transforms
+#import torch
 
 # Taken from
 # https://github.com/pytorch/tutorials/blob/master/intermediate_source/reinforcement_q_learning.py
@@ -19,10 +22,13 @@ class ReplayMemory(object):
         """Saves a transition."""
         if len(self.memory) < self.capacity:
             self.memory.append(None)
+        else:
+            print("Filled Memory!")
         self.memory[self.position] = Transition(*args)
         self.position = (self.position + 1) % self.capacity
 
-    def sample(self, batch_size):
+
+    def sample_batch(self, batch_size):
         return random.sample(self.memory, batch_size)
 
     def __len__(self):

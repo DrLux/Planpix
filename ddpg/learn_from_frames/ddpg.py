@@ -61,12 +61,14 @@ class DDPG(object):
         self.actor_target.eval()
         self.critic_target.eval()
         self.critic.eval()
+        self.shared_network.eval()
 
     def train_mode(self):
         self.actor.train()
         self.actor_target.train()
         self.critic_target.train()
         self.critic.train()
+        self.shared_network.train()
 
 
     def get_action(self, state, episode, action_noise=True):
@@ -80,8 +82,8 @@ class DDPG(object):
 
         # During training we add noise for exploration
         if action_noise:
-            noise = torch.Tensor(self.ou_noise.noise()).to(self.device) * 1.0/(1.0 + 0.1*episode)
-            noise = noise.clamp(0,0.1)
+            noise = torch.Tensor(self.ou_noise.noise()).to(self.device) * 1.0/(1.0 + 0.005*episode)
+            noise = noise.clamp(0,0.2)
             mu = mu + noise  # Add exploration noise ε ~ p(ε) to the action. Do not use OU noise (https://spinningup.openai.com/en/latest/algorithms/ddpg.html)
 
         # Clip the output according to the action space of the env

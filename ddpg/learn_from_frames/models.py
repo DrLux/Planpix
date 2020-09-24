@@ -14,12 +14,17 @@ def fan_in_uniform_init(tensor, fan_in=None):
 class Shared_network(nn.Module):
     def __init__(self):
         super(Shared_network, self).__init__()
-        self.conv1 = nn.Conv2d(3, 32, 3, stride=2)
-        self.conv2 = nn.Conv2d(32, 32, 3)
-        self.conv3 = nn.Conv2d(32, 32, 3)        
+        self.conv1 = nn.Conv2d(3, 32, 3, stride=2) # kernel 3x3
+        self.bn1 = nn.BatchNorm2d(32)
+        self.conv2 = nn.Conv2d(32, 64, 3, stride=2) # kernel 3x3
+        self.bn2 = nn.BatchNorm2d(64)
+        self.conv3 = nn.Conv2d(64, 128, 3, stride=2) # kernel 3x3
+        self.bn3 = nn.BatchNorm2d(128)
         
-        self.fc1 = nn.Linear(23328, 512) #512 real data
-        self.b3 = nn.BatchNorm1d(512)
+        self.fc1 = nn.Linear(6272, 200)
+        self.bn4 = nn.BatchNorm1d(200)
+        self.fc2 = nn.Linear(200, 50)
+        self.bn5 = nn.BatchNorm1d(50)
 
         # Weight Init
         fan_in_uniform_init(self.conv1.weight)
@@ -31,23 +36,25 @@ class Shared_network(nn.Module):
         fan_in_uniform_init(self.conv3.weight)
         fan_in_uniform_init(self.conv3.bias)
 
-        nn.init.uniform_(self.fc1.weight, -3*1e-4, 3*1e-4) 
-        nn.init.uniform_(self.fc1.bias, -3*1e-4, 3*1e-4)
+        fan_in_uniform_init(self.fc1.weight)
+        fan_in_uniform_init(self.fc1.bias)
+
+        nn.init.uniform_(self.fc2.weight, -3*1e-4, 3*1e-4) 
+        nn.init.uniform_(self.fc2.bias, -3*1e-4, 3*1e-4)
 
 
     def forward(self, x):
+        act = nn.ELU()
         batch_size = x.size(0)
-        x = torch.transpose(x, 1, 3)
-
-        #act = nn.ELU()
-
-        hidden = F.relu(self.conv1(x))
-        hidden = F.relu(self.conv2(hidden))
-        hidden = F.relu(self.conv3(hidden))
+        x = x.float() / 255.0
+        
+        hidden = act(self.bn1(self.conv1(x)))
+        hidden = act(self.bn2(self.conv2(hidden)))
+        hidden = act(self.bn3(self.conv3(hidden)))
         x = hidden.view(batch_size,-1)
-
-        x = self.b3(F.relu(self.fc1(x)))
-
+        x = self.bn4(torch.tanh(self.fc1(x)))
+        x = self.bn5(torch.tanh(self.fc2(x)))
+        
         return x
 
 
@@ -58,7 +65,7 @@ class Actor(nn.Module):
         super(Actor, self).__init__()
         self.shared_network = shared_network
         
-        self.fc1 = nn.Linear(512, 128)
+        self.fc1 = nn.Linear(50, 128)
         self.fc2 = nn.Linear(128, 300)
         self.fc3 = nn.Linear(300, 400)
         self.fc4 = nn.Linear(400, action_space)
@@ -103,7 +110,7 @@ class Critic(nn.Module):
         super(Critic, self).__init__()
         self.shared_network = shared_network
         
-        self.fc1 = nn.Linear(512, 128)
+        self.fc1 = nn.Linear(50, 128)
         self.fcA1 = nn.Linear(action_space, 256)
         self.fcS1 = nn.Linear(128, 256)
         self.fc2 = nn.Linear(256, 300)
