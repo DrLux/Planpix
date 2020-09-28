@@ -14,18 +14,22 @@ def fan_in_uniform_init(tensor, fan_in=None):
 class Shared_network(nn.Module):
     def __init__(self):
         super(Shared_network, self).__init__()
-        self.conv1 = nn.Conv2d(3, 32, 3, stride=2) # kernel 3x3
+        self.conv1 = nn.Conv2d(9, 32, 3, stride=2) 
         self.bn1 = nn.BatchNorm2d(32)
-        self.conv2 = nn.Conv2d(32, 64, 3, stride=2) # kernel 3x3
+        self.conv2 = nn.Conv2d(32, 64, 3, stride=2)
         self.bn2 = nn.BatchNorm2d(64)
-        self.conv3 = nn.Conv2d(64, 128, 3, stride=2) # kernel 3x3
+        self.conv3 = nn.Conv2d(64, 128, 3, stride=2) 
         self.bn3 = nn.BatchNorm2d(128)
+        self.conv4 = nn.Conv2d(128, 256, 3, stride=2) 
+        self.bn4 = nn.BatchNorm2d(256)
         
-        self.fc1 = nn.Linear(6272, 200)
-        self.bn4 = nn.BatchNorm1d(200)
-        self.fc2 = nn.Linear(200, 50)
-        self.bn5 = nn.BatchNorm1d(50)
-
+        self.fc1 = nn.Linear(2304, 1024)
+        self.bn5 = nn.BatchNorm1d(1024)
+        self.fc2 = nn.Linear(1024, 512)
+        self.bn6 = nn.BatchNorm1d(512)
+        self.fc3 = nn.Linear(512, 50)
+        self.bn7 = nn.BatchNorm1d(50)
+       
         # Weight Init
         fan_in_uniform_init(self.conv1.weight)
         fan_in_uniform_init(self.conv1.bias)
@@ -36,27 +40,36 @@ class Shared_network(nn.Module):
         fan_in_uniform_init(self.conv3.weight)
         fan_in_uniform_init(self.conv3.bias)
 
+        fan_in_uniform_init(self.conv4.weight)
+        fan_in_uniform_init(self.conv4.bias)
+
         fan_in_uniform_init(self.fc1.weight)
         fan_in_uniform_init(self.fc1.bias)
 
-        nn.init.uniform_(self.fc2.weight, -3*1e-4, 3*1e-4) 
-        nn.init.uniform_(self.fc2.bias, -3*1e-4, 3*1e-4)
+        fan_in_uniform_init(self.fc2.weight)
+        fan_in_uniform_init(self.fc2.bias)
+
+        nn.init.uniform_(self.fc3.weight, -3*1e-4, 3*1e-4) 
+        nn.init.uniform_(self.fc3.bias, -3*1e-4, 3*1e-4)
 
 
     def forward(self, x):
         act = nn.ELU()
         batch_size = x.size(0)
-        x = x.float() / 255.0
+        
+        # Normalize input and cast to float
+        x = x / 255.0
         
         hidden = act(self.bn1(self.conv1(x)))
         hidden = act(self.bn2(self.conv2(hidden)))
         hidden = act(self.bn3(self.conv3(hidden)))
-        x = hidden.view(batch_size,-1)
-        x = self.bn4(torch.tanh(self.fc1(x)))
-        x = self.bn5(torch.tanh(self.fc2(x)))
-        
+        hidden = act(self.bn4(self.conv4(hidden)))
+        x = hidden.reshape(batch_size,-1)
+        #print(x.shape)
+        x = self.bn5(torch.tanh(self.fc1(x)))
+        x = self.bn6(torch.tanh(self.fc2(x)))
+        x = self.bn7(torch.tanh(self.fc3(x)))
         return x
-
 
 class Actor(nn.Module):
 

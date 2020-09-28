@@ -3,7 +3,7 @@ import os
 import random
 import numpy as np
 import torch
-from memory import ReplayMemory,Transition
+from memory import ReplayMemory
 from ddpg import *
 import matplotlib.pyplot as plt
 import plotly
@@ -11,22 +11,23 @@ from plotly.graph_objs import Scatter
 from plotly.graph_objs.scatter import Line
 from tqdm import tqdm
 
+# 15367 compressed
 
 class Initializer():
     def __init__(self): 
-        self.seed = 8
+        self.seed = 0
         self.use_cuda = True
-        self.replay_size = 10000#1000000
+        self.replay_size =  1000000
         self.gamma = 0.99
         self.tau = 1e-3
         self.device = torch.device('cuda')
-        self.max_iters = 20105
-        self.batch_size = 64
+        self.max_iters = 1105#20105
+        self.batch_size = 32+1
         self.number_of_stack = 3
-        self.results_path = '/home/luca/Desktop/luca/frames/ddpg/swap_300_batch_64'
+        self.results_path = '/home/luca/Desktop/luca/frames/ddpg/compressed'
         self.statistic_dir = os.path.join(self.results_path, 'statistics/')
-        self.gpu_id = 1
-        self.hard_swap_interval = 300     # o 500
+        self.gpu_id = 0
+        self.hard_swap_interval = 300     
         torch.cuda.set_device(self.gpu_id)
 
 
@@ -42,7 +43,7 @@ class Initializer():
         self.env = ControlSuite('cheetah-run', 2, 1000, 4, 3)
         self.agent = DDPG(self.gamma, self.tau,self.env.state_space(),self.env,self.device)
         # Initialize replay memory
-        self.memory = ReplayMemory(int(self.replay_size))
+        self.memory = ReplayMemory(int(self.replay_size), self.env.action_space())
         self.list_total_rewards = []
         self.list_iter = []
         self.step = 0
@@ -61,26 +62,21 @@ class Initializer():
                 self.test(self.current_episode)
                 self.save_checkpoint()
 
-    
-
     def explore_and_collect(self, iter):
         
         done = False
         total_reward = 0
-        state = torch.tensor(self.env.reset()).cpu()
+        state = self.env.reset()
         
         while not done:
             self.metrics['steps'] = self.step
             self.step += 1
-            action = self.agent.get_action(state,iter, action_noise=True)
-            next_state, reward, done, _ = self.env.step(action.cpu().numpy()[0])
+            action = self.agent.get_action(torch.tensor(state).unsqueeze(dim=0),iter, action_noise=True)
+            action = action.cpu().numpy()[0]
+            next_state, reward, done, _ = self.env.step(action)
+            self.memory.push(state, action, done, reward)
 
-            mask = torch.Tensor([done]).to(self.device)
-            reward = torch.Tensor([reward]).to(self.device)
-            next_state = torch.Tensor(next_state).cpu()
             total_reward += reward
-
-            self.memory.push(state, action, mask, next_state, reward)
             state = next_state
 
             if len(self.memory) > self.batch_size:
@@ -91,11 +87,11 @@ class Initializer():
 
         #print("iter: ", iter, " total_reward: ", total_reward)
         self.list_iter.append(iter)
-        self.list_total_rewards.append(total_reward.cpu())
+        self.list_total_rewards.append(total_reward)
         plt.plot(self.list_iter, self.list_total_rewards)
         plt.show()
         plt.savefig('reward.png')
-        self.metrics['train_rewards'].append(total_reward.item())
+        self.metrics['train_rewards'].append(total_reward)
         self.lineplot(self.metrics['episodes'][-len(self.metrics['train_rewards']):], self.metrics['train_rewards'], 'train_rewards', self.statistic_dir)
         self.lineplot(self.metrics['episodes'][-len(self.metrics['actor_loss']):], self.metrics['actor_loss'], 'actor_loss', self.statistic_dir)
         self.lineplot(self.metrics['episodes'][-len(self.metrics['critic_loss']):], self.metrics['critic_loss'], 'critic_loss', self.statistic_dir)
@@ -112,35 +108,30 @@ class Initializer():
 
     def fit_buffer(self):
         transitions = self.memory.sample_batch(self.batch_size)
-        # Transpose the batch
-        # (see http://stackoverflow.com/a/19343/3343043 for detailed explanation).
-        batch = Transition(*zip(*transitions))
-
+        
         # Update actor and critic according to the batch
-        actor_loss, critic_loss = self.agent.update_params(batch)
+        actor_loss, critic_loss = self.agent.update_params(transitions)
         self.metrics['actor_loss'].append(actor_loss)
         self.metrics['critic_loss'].append(critic_loss)
 
     def test(self, episode):
         self.agent.eval_mode()
-        state = torch.tensor(self.env.reset()).cpu()
+        i = 0 
         total_reward = 0
         done = False
-        i = 0 
+        state = self.env.reset()
+        
         while not done:
-            action = self.agent.get_action(state,iter,action_noise=False)
+            action = self.agent.get_action(torch.tensor(state).unsqueeze(dim=0),episode, action_noise=False)
             next_state, reward, done, _ = self.env.step(action.cpu().numpy()[0])
 
-            mask = torch.Tensor([done]).to(self.device)
-            reward = torch.Tensor([reward]).to(self.device)
-            next_state = torch.Tensor(next_state).cpu()
             total_reward += reward
-            state = next_state
+            state = next_state        
             i +=1
 
         print("Result of test: ", total_reward)
         #self.agent.train_mode()
-        self.metrics['test_rewards'].append(total_reward.item())
+        self.metrics['test_rewards'].append(total_reward)
         self.metrics['test_episodes'].append(episode)        
         self.lineplot(self.metrics['test_episodes'][-len(self.metrics['test_rewards']):], self.metrics['test_rewards'], 'test_rewards', self.statistic_dir)
         

@@ -45,22 +45,23 @@ class ControlSuite():
         self.number_of_stack = number_of_stack
         # Initialize deque with zero-images one array for each image
         self.stacked_frames  =  deque([np.zeros((64,64), dtype=np.int) for i in range(self.number_of_stack)], maxlen=self.number_of_stack)
-
+        self.bit_depth = 1
 
     def close(self):
         self._env.close()
+
+    # Preprocesses an observation inplace (from float32 Tensor [0, 255] to [-0.5, 0.5])
+    def quantise_frame(self,observation):
+        observation.div_(2 ** (8 - self.bit_depth)).floor_().div_(2 ** self.bit_depth).sub_(0.5)  # Quantise to given bit depth and centre
+        observation.add_(torch.rand_like(observation).div_(2 ** self.bit_depth))  # Dequantise (to approx. match likelihood of PDF of continuous images vs. PMF of discrete images)
+
     
     def get_obs(self):
         frame = self._env.physics.render(height=64, width=64, camera_id=0)
-        frame = torch.from_numpy(frame.copy())
-        frame = torch.transpose(frame, 0, 2)
-        trans = transforms.Compose([
-                                    transforms.ToPILImage(),
-                                    transforms.Grayscale(num_output_channels=1),
-                                    transforms.ToTensor(),
-                                    ])
-        preprocessed_frame = trans(frame)
-        return preprocessed_frame.numpy()
+        frame = np.transpose(frame, (2, 0, 1))
+        #self.quantise_frame(frame)  # Quantise, centre and dequantise inplace
+        return frame
+    
 
     def reset(self):
         self.t = 0  # Reset internal timer
@@ -73,7 +74,8 @@ class ControlSuite():
         self.stacked_frames.append(obs)
 
         # Stack the frames
-        current_frame = np.stack(self.stacked_frames, axis=1)
+        #current_frame = np.stack(self.stacked_frames, axis=1)        
+        current_frame = np.concatenate(self.stacked_frames, axis=0)
         return current_frame
 
     def sample_random_action(self):
@@ -92,8 +94,8 @@ class ControlSuite():
         
         frame = self.get_obs()
         self.stacked_frames.append(frame)
-        current_frame = np.stack(self.stacked_frames, axis=1)
-        
+        #current_frame = np.stack(self.stacked_frames, axis=1)                
+        current_frame = np.concatenate(self.stacked_frames, axis=0)
         return current_frame,reward,done,obs        
     
     def action_range(self):

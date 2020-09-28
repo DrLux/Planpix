@@ -5,6 +5,9 @@ import torch
 from models import *
 from noise import OrnsteinUhlenbeckActionNoise
 
+from torchvision import transforms
+import torch
+
 
 import torch.nn.functional as F
 from torch.optim import Adam
@@ -24,11 +27,12 @@ class DDPG(object):
 
     def __init__(self, gamma, tau,num_inputs, env,device, checkpoint_dir=None):
 
+        self.env = env
         self.gamma = gamma
         self.tau = tau
-        self.min_action,self.max_action = env.action_range()
+        self.min_action,self.max_action = self.env.action_range()
         self.device = device
-        self.num_actions = env.action_space()
+        self.num_actions = self.env.action_space()
         self.noise_stddev = 0.3
 
         self.results_path = '/home/luca/Desktop/luca/ddpg/'
@@ -76,7 +80,7 @@ class DDPG(object):
 
         # Get the continous action value to perform in the env
         self.actor.eval()  # Sets the actor in evaluation mode
-        mu = self.actor(x)#.detach()
+        mu = self.actor(x)
         self.actor.train()  # Sets the actor in training mode
         mu = mu.data
 
@@ -92,39 +96,46 @@ class DDPG(object):
         return mu
 
     def update_params(self, batch):
-        # Get tensors from the batch
-        action_batch     = torch.cat(batch.action).to(self.device)
-        reward_batch     = torch.cat(batch.reward).to(self.device)
-        done_batch       = torch.cat(batch.done).to(self.device)        
-        next_state_batch = torch.cat(batch.next_state).to(self.device)
-        state_batch      = torch.cat(batch.state).to(self.device)
 
+        # Get tensors from the batch
+        
+        # next_state_batch = batch_state[1:]
+        # state_batch = batch_state[0:-1]
+
+        batch_state = torch.Tensor(batch[0]).to(self.device) 
+        batch_act = torch.Tensor(batch[1]).to(self.device)
+        batch_rwd = torch.Tensor(batch[2]).to(self.device)
+        batch_done = torch.Tensor(batch[3]).to(self.device)
+
+        #self.env.quantise_frame(state_batch.float())
+        #self.env.quantise_frame(next_state_batch.float())
+        
         # Get the actions and the state values to compute the targets
-        next_action_batch = self.actor_target(next_state_batch)
-        next_state_action_values = self.critic_target(next_state_batch, next_action_batch.detach())
+        next_action_batch = self.actor_target(batch_state[1:]) #next_state
+        next_state_action_values = self.critic_target(batch_state[1:], next_action_batch.detach()) #next_state
 
         # Compute the target
-        reward_batch = reward_batch.unsqueeze(1)
-        done_batch = done_batch.unsqueeze(1)
-        expected_values = reward_batch + (1.0 - done_batch) * self.gamma * next_state_action_values
-
+        batch_rwd = batch_rwd.unsqueeze(1)
+        #batch_done = batch_done.unsqueeze(1)
+        expected_values = batch_rwd[:-1] + (1.0 - batch_done[:-1]) * self.gamma * next_state_action_values
+        
         # Update the critic network
         self.critic_optimizer.zero_grad()
-        state_action_batch = self.critic(state_batch, action_batch)
+        state_action_batch = self.critic(batch_state[:-1], batch_act[:-1])
         value_loss = F.mse_loss(state_action_batch, expected_values.detach())
         value_loss.backward()
         self.critic_optimizer.step()
 
         # Update the actor network
         self.actor_optimizer.zero_grad()
-        policy_loss = -self.critic(state_batch, self.actor(state_batch))
+        policy_loss = -self.critic(batch_state[:-1], self.actor(batch_state[:-1]))
         policy_loss = policy_loss.mean()
         policy_loss.backward()
         for param in self.actor.parameters():
             param.grad.data.clamp(-1, 1)
         self.actor_optimizer.step()
 
-       # Update the target networks
+        # Update the target networks
         soft_update(self.actor_target, self.actor, self.tau)
         soft_update(self.critic_target, self.critic, self.tau)
 
