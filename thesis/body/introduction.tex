@@ -1,0 +1,55 @@
+% Chapter 1
+
+
+\chapter{Introduction} % Main chapter title
+
+\label{Chapter1} % For referencing the chapter elsewhere, use \ref{Chapter1} 
+The idea of \textbf{Reinforcement Learning} (RL) has been known since \textbf{Turing}'s time.
+He talked about it in his article "Computing machinery and intelligence":
+"We normally associate punishments and rewards with the teaching process. 
+Some simple child machines can be constructed or programmed on this sort of principle. 
+The machine has to be so constructed that events that shortly preceded the occurrence of a punishment signal are unlikely to be repeated. In contrast, a reward signal increased the probability of repetition of the events, which led up to it.\cite{turing2009computing}"
+This idea is now called reinforcement learning and consists of training an agent to achieve a goal by interacting directly in an environment without prior knowledge. The agent receives positive or negative feedback for each action it takes and tries to accumulate positive rewards.
+From that time to our day, a lot of progress has been achieved.
+In recent years RL has been combined with Deep Learning algorithms to obtain outstanding results and reach superhuman performance in complex tasks, for example learning to play Go from scratch \cite{silver2016mastering} or flying an acrobatic model helicopter \cite{abbeel2007application}.\\
+
+Unfortunately, in order to reach some impressive results, these methods require a prohibitive amount of samples.
+For example, in 2019, Open AI released OpenAI Five: the first AI able to beat the world champions in an e-sports game called Dota 2 \cite{berner2019dota}. 
+Despite the incredible result, the training cost was tremendous, the authors report that the OpenAI Five has experienced an average of 250 years of simulated experience per day. This is the reason why the main exciting results are obtained  with agents that act in a virtual environment.
+Sometimes, these algorithms are also used to train a real world agent \cite{andrychowicz2020learning}, but the training is mostly performed into a simulator.
+Build a simulator each time we need to train an agent for a task can be too expensive,for example think about a robot that learns to run, and it is an open research problem how to transfer the learned policy reliably to the real world.
+At the same time, the idea of performing millions of experiments with a physical robot in a reasonable amount of time and without hardware wear and tear  is unrealistic.
+Alan Turing had already foreseen this problem, and in his article, he says: "The use of punishments and rewards can at best be a part of the teaching process... By the time a child has learned to repeat 'Casabianca' he would probably feel very sore indeed".
+One of the most promising solutions to improve the sample efficiency is the Model-Based approach that combines the power of supervised learning, the reinforcement learning framework, and the planning algorithms. 
+The key idea is to learn the environment's transition model to allow the agent to simulate interactions instead of acting directly without any knowledge.
+There are several approaches to learn predictive models of the dynamic environment using pixel information.
+If a sufficiently accurate model of the environment can be learned, then even a simple controller can be used to control a robot directly from camera images \cite{finn2016deep}.
+Another advantage of the model-based approach is that once the agent learns the model dynamics, it could quickly adapt without a fully retraining whenever the reward function was switched to assign a new task  \cite{nagabandi2018neural}.  \\
+
+Unfortunately, the research in model-based RL is not been very standardized. The authors often use different environments (sometimes self-designed environments), and sometimes they do not publish their code. This thesis aims to create a fair comparison, built over standard benchmark environments the Deepmind Control Suite \cite{tassa2018deepmind}, between one of the most promising model-based algorithms called PlaNet \cite{hafner2019learning} and one standard model-free called Deep Deterministic Policy Gradient \cite{lillicrap2015continuous}. \\
+Similar work is being done in 2019 by Tingwu Wang et al. \cite{langlois2019benchmarking}. They gather a wide collection of model-based reinforcement learning (MBRL) algorithms and propose over 18 benchmarking environments specially designed for MBRL and compare the results also with a model-free algorithms. All the tested algorithms in that research work in low dimension. In our work, we use the PlaNet algorithm that promises to perform well with high dimensional input. Moreover, since we focus on a single algorithm, we also implement some variants to improve its results on a benchmark environment.\\
+
+Therefore, the following research questions are addressed:
+\begin{itemize}
+\item What are the pro and cons of the two approaches?  
+\item What is the effective sample efficiency improvement when we use a model-based algorithm? 
+\item How does the training time change? 
+\item Does the model still achieve the same results? 
+\item What improvements can we apply to the model-based algorithm?
+\end{itemize}
+
+
+\subsection{Thesis Outline}
+
+Following this introductory chapter, the thesis branches between two main concepts, Deep Learning and Reinforcement Learning. Both have an extensive dedicated chapter. Then the RL theory branches again between Model-based and Model-free algorithms. In the dedicated chapters some architectures are presented. Lastly, we present our experiments and conclusion. Chapter \ref{Chapter2} presents some main concepts of the Deep Learning that will be necessary to do the experiments. Both supervised and unsupervised learning techniques are applied in later chapters. Chapter \ref{Chapter3} introduces to classic Reinforcement Learning theory with an explanation of the mathematical preliminaries associated with it. An introduction to the difference between the model-free and model-based methods is introduced. Chapter \ref{Chapter4} discusses some Deep Reinforcement Learning algorithms including the first one used for this thesis called Deep Determinitic Policy Gradient (DDPG). Chapter \ref{Chapter5} provides a focus over the model-based DRL algorithms and it introduces the second main algorithm used for this thesis (PlaNet). Chapter \ref{Chapter6} introduces the suite of benchmark environments, evaluates the performance of the two proposed method and discusses the results. Moreover, it introduces a new technique developed in this thesis to improve the sample efficiency of the model-based algorithm. Chapter \ref{Chapter7} concludes gathered from the current endeavor and considerations for future work.
+
+
+
+
+
+
+
+
+
+
+

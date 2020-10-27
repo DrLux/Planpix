@@ -1,0 +1,14 @@
+\chapter*{Abstract}
+
+Reinforcement Learning (RL) is a subfield of Machine Learning where an agent learns to solve a task by interacting with the environment by trial and error without explicit knowledge. The agent receives a reward signal as feedback for every action it takes, and it learns to prefer those accompanied by a positive reward over those accompanied by a negative reward. 
+This simple formulation allows the agent to directly choose the right actions from sensory observations, e.g. high dimensional inputs like camera frames, and to solve many complex tasks, like playing video-games or controlling robots.  \\ 
+The standard formulation exposed before is called Model-Free Reinforcement Learning because it does not require the agent to predict explicitly the environment dynamics, thus it can be viewed as a black-box approach. However, it requires a tremendous amount of experience and the lack of sample efficiency limits the usefulness of these algorithms in practice. 
+One possible solution to overcome this problem is to combine the Reinforcement Learning framework with planning algorithms. 
+This approach is called Model-Based RL.
+Instead of directly mapping observations to actions, Model-based RL allows the agent to plan explicitly the sequence of actions to be taken by observing the environment dynamics predicted by an environment model. \\
+In recent years RL has been combined with Deep Learning algorithms to obtain outstanding results and reach superhuman performance in complex tasks. This combination of Reinforcement Learning and Deep Learning has been called Deep Reinforcement Learning (DRL).
+In this thesis, one of the state-of-the-art Model-Based DRL algorithms called PlaNet is deeply investigated and compared with the model-free DRL algorithm called Deep Deterministic Policy Gradient (DDPG). 
+All the experiments are based on Deepmind Control Suite that is a set of continuous control tasks that are built for benchmarking reinforcement learning agents. Both the algorithms examined were tested on a subset of four environments.
+The main strengths and weaknesses of both approaches are highlighted in order to show if and how much a Model-Based RL can overcome the limits of Model-Free RL.\\
+
+I declare that the material submitted for assessment is my own work except where credit is explicitly given to others by citation or acknowledgement.

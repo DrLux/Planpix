@@ -1,0 +1,18 @@
+\chapter*{Italian abstract}
+
+Il Reinforcement Learning (RL) è una tecnica di Machine Learning in cui vi è un agente che impara a risolvere un task interagendo col l’ambiente in cui si trova e di cui non ha nessuna conoscenza procedendo con un approccio trial and error. L’agente riceve un segnale di feedback chiamato reward per ogni azione che compie e impara a favorire quelle azioni accompagnate da un reward positivo a discapito di quelle accompagnate da un reward negativo. 
+Questa semplice formulazione permette all’agente di prevedere le migliori azioni a partire dai sensori di input, come ad esempio i frame della camera, e di risolvere quindi molti task complessi, come giocare a videogiochi o controllare robot.
+La formulazione standard espressa finora viene definita Model-Free Reinforcement Learning perchè non richiede all'agente di costruirsi un modello dell'environment e di prevederne esplicitamente le dinamiche.
+Purtroppo, questo approccio diretto richiede un numero tremendamente elevato di esperienza e questo scarso livello di sample-efficiency limita l’utilità di questi algoritmi nell’uso pratico.
+Una possibile soluzione per superare questo problema è quella di combinare il Reinforcement Learning con algoritmi di planning.
+Questo approccio è chiamato Model-Based DRL.
+Invece di creare un mapping diretto tra osservazioni e azioni, il MBDRL permette all'agente di pianificare in modo esplicito la sequenza di azioni da intraprendere in base alle previsioni sugli sviluppi dell’ environment.
+
+Negli ultimi anni il RL è stato combinato con algoritmi di Deep Learning ottenendo cosi risultati eccezionali arrivando a superare umani esperti anche in task complessi.
+Questa combinazione di RL e DL prende il nome di Deep Reinforcement Learning (DRL).
+In questa tesi, uno degli più recenti algoritmi di Model-Based DRL chiamato PlaNet viene esplorato e comparato con un algoritmo di Model-Free DRL chiamato Deep Deterministic Policy Gradient.
+Tutti gli esperimenti sono basati sulla Deepmind Control Suite, un set di task creati per effettuare benchmark di agenti addestrati tramite DRL. Entrambi gli algoritmi presi in esame sono stati testati su quattro environments.
+I maggiori punti di forza e di debolezza dei due approcci vengono messi in luce per mostrare se e quanto l’approccio Model-Based sia in grado di superare i limiti del Model-Free DRL.\\
+
+“Dichiaro che il sottoscritto nonché autore del documento è il responsabile del suo contenuto, e per le parti tratte da altri lavori, queste vengono espressamentedichiarate citando le fonti”
+
