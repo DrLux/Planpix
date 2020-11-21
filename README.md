@@ -1,13 +1,15 @@
-
+This repo is from my Master's degree thesis work.
+I used PlaNet to probe how model-based DRL can overcome the model-free algorithms in terms of sample efficiency.
+My implementation of PlaNet is based on the Kaixhin one, but I reach better results. I also experiment with a regularizer based on DAE to reduce the gap between the real and the predicted rewards. 
+The company where I developed this algorithm asks me to remove the code, but you can find all the explanations in ![my blog article](https://drlux.github.io/planpix.html)  (you can also contact me).
 
 ![Full trained agent](https://raw.githubusercontent.com/DrLux/Planpix/master/images/agent_in_action.gif?token=ADY2SMJQXOZK3BJN3EGTLDK7YJX66)
 
 PlaNet
 ======
+General overview of Planet model architecture. If you want a full explanation, click on it!
 [![Blog_article](https://drlux.github.io/masterDegree/Diapositiva16.JPG)](https://drlux.github.io/planpix.html)
 
-To have more details about Planet architecture (and my thesis work), please visit my blog:
-https://drlux.github.io/planpix.html
 
 Results
 ------------
@@ -40,6 +42,7 @@ Links
 - [Kaixhin/planet](https://github.com/Kaixhin/PlaNet)
 - [google-research/planet](https://github.com/google-research/planet)
 - [Curl: Contrastive unsupervised representations for reinforcement learning](https://proceedings.icml.cc/static/paper_files/icml/2020/5951-Paper.pdf)
+
 
 Acknowledgements
 ----------------
