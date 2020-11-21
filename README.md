@@ -1,7 +1,7 @@
 This repo is from my Master's degree thesis work.
-I used PlaNet to probe how model-based DRL can overcome the model-free algorithms in terms of sample efficiency.
-My implementation of PlaNet is based on the Kaixhin one, but I reach better results. I also experiment with a regularizer based on DAE to reduce the gap between the real and the predicted rewards. 
-The company where I developed this algorithm asks me to remove the code, but you can find all the explanations in ![my blog article](https://drlux.github.io/planpix.html)  (you can also contact me).
+I used PlaNet to prove that model-based DRL can overcome the model-free algorithms in terms of sample efficiency.
+My implementation of PlaNet is based on the [Kaixhin](https://github.com/Kaixhin/PlaNet) one, but I reach better results. I also experiment with a regularizer based on DAE to reduce the gap between the real and the predicted rewards. 
+The company where I developed this algorithm asks me to remove the code, but you can find all the explanations in my [blog article](https://drlux.github.io/planpix.html)  (you can also contact me).
 
 ![Full trained agent](https://raw.githubusercontent.com/DrLux/Planpix/master/images/agent_in_action.gif?token=ADY2SMJQXOZK3BJN3EGTLDK7YJX66)
 
