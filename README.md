@@ -5,10 +5,21 @@ The company asks me to note publish that feature, but you can find all the expla
 
 ![Full trained agent](https://raw.githubusercontent.com/DrLux/Planpix/master/images/agent_in_action.gif?token=ADY2SMJQXOZK3BJN3EGTLDK7YJX66)
 
-PlaNet
+PlaNet Overview
 ======
 General overview of Planet model architecture. If you want a full explanation, click on it!
 [![Blog_article](https://drlux.github.io/masterDegree/Diapositiva16.JPG)](https://drlux.github.io/planpix.html)
+
+Medium Articles
+======
+- Part 1: [Deep Reinforcement Learning doesn’t really work… Yet](https://enrico-busto.medium.com/deep-rl-a-model-based-approach-part-1-drl-doesnt-really-work-yet-9971c5ccb4d6)
+
+- Part 2: [Model-based Deep Reinforcement Learning explained](https://enrico-busto.medium.com/deep-rl-a-model-based-approach-part-2-drl-explained-837591ffadaa)
+
+- Part 3: [The Deep Planning Network (PlaNet)](https://enrico-busto.medium.com/deep-rl-a-model-based-approach-part-3-planet-6427b76a21)
+
+- Part 4: [Our quest to make Reinforcement Learning 200 times more efficient](https://enrico-busto.medium.com/deep-rl-a-model-based-approach-part-3-200-times-more-efficient-b7ef9cd433c)
+
 
 
 Results
